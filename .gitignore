@@ -1,0 +1,43 @@
+# Python general
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+wheels/
+*.manifest
+
+# Test / coverage / cache
+.pytest_cache/
+.coverage
+.cache/
+htmlcov/
+.mypy_cache/
+.dmypy.json
+.pytype/
+.ruff_cache/
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# MacOS
+.DS_Store
