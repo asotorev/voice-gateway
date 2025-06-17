@@ -1,11 +1,15 @@
 from fastapi import FastAPI
-from app.adapters.routes import healthcheck
+
+from app.api.routes import auth, healthcheck
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Voice Authentication API", version="0.1.0")
 
     app.include_router(healthcheck.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
 
     return app
+
 
 app = create_app()
