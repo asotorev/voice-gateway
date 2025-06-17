@@ -23,7 +23,11 @@ async def register(
     use_case: RegisterUserUseCase = Depends(get_register_use_case)
 ):
     try:
-        user = await use_case.execute(request.email, request.name)
+        user = await use_case.execute(
+            email=request.email,
+            name=request.name,
+            password=request.password
+        )
         return UserRegisterResponse(
             id=user.id,
             email=user.email,
