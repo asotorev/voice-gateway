@@ -6,6 +6,8 @@ __pycache__/
 
 # Virtual environments
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/
@@ -34,10 +36,17 @@ htmlcov/
 
 # Logs
 *.log
+logs/
 
 # IDEs
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# MacOS
+# Docker data
+docker/
+
+# OS
 .DS_Store
+Thumbs.db
