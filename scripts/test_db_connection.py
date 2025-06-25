@@ -128,7 +128,14 @@ def check_prerequisites():
     env_file = Path(".env.local")
     if not env_file.exists():
         print("Environment file .env.local not found")
-        print("Create it from the provided template")
+        
+        # Check if template exists
+        template_file = Path(".env.example")
+        if template_file.exists():
+            print("Copy template: cp .env.example .env.local")
+        else:
+            print("Create .env.local with DynamoDB configuration")
+        
         return False
     
     print("Environment configuration found")
