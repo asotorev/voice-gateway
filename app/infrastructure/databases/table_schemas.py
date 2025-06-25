@@ -70,8 +70,7 @@ class TableSchemas:
                     ],
                     'Projection': {
                         'ProjectionType': 'ALL'
-                    },
-                    'BillingMode': 'PAY_PER_REQUEST'
+                    }
                 }
             ],
             'BillingMode': 'PAY_PER_REQUEST',  # On-demand pricing for development
