@@ -1,6 +1,6 @@
 """
 Application settings with DynamoDB configuration and audio storage.
-Focused on local development setup with storage provider independence.
+All configuration values sourced from environment files for maximum flexibility.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
@@ -9,10 +9,16 @@ from typing import Optional
 class Settings(BaseSettings):
     """
     Application settings with validation and type safety.
+    All values configurable via environment variables.
     """
     
     # Environment
     environment: str
+    
+    # Application Network
+    app_host: str = "localhost"
+    app_port: int = 8080
+    app_protocol: str = "http"
     
     # DynamoDB Configuration
     aws_region: str
@@ -24,7 +30,7 @@ class Settings(BaseSettings):
     
     # Configuration
     model_config = SettingsConfigDict(
-        env_file=".env.local",
+        env_file=[".env.local", ".env.development", ".env.staging", ".env.production"],
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
@@ -40,13 +46,16 @@ class Settings(BaseSettings):
         """Check if should use local DynamoDB."""
         return self.dynamodb_endpoint_url is not None
     
+    @property
+    def app_url(self) -> str:
+        """Get full application URL for testing and documentation."""
+        if self.app_port in (80, 443):
+            return f"{self.app_protocol}://{self.app_host}"
+        return f"{self.app_protocol}://{self.app_host}:{self.app_port}"
+    
     def get_full_audio_url(self, audio_path: str) -> str:
         """
         Convert relative audio path to full URL.
-        
-        This method eliminates coupling between database storage and 
-        audio storage provider by combining configurable base URL 
-        with relative paths stored in DynamoDB.
         
         Args:
             audio_path: Relative path like 'user123/sample1.wav'
@@ -54,14 +63,10 @@ class Settings(BaseSettings):
         Returns:
             Full URL like 's3://voice-gateway-audio/user123/sample1.wav'
         """
-        # Ensure base URL ends with slash
         base_url = self.audio_base_url
         if not base_url.endswith('/'):
             base_url += '/'
-        
-        # Ensure path doesn't start with slash
         path = audio_path.lstrip('/')
-        
         return base_url + path
 
 

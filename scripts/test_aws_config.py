@@ -123,7 +123,6 @@ def main():
     
     if overall_success:
         print("AWS configuration abstraction layer works correctly!")
-        print("Ready for table schema definition.")
     else:
         print("Some abstraction tests failed.")
         print("Ensure basic connectivity works first:")

@@ -143,7 +143,7 @@ def check_prerequisites():
     # Verify DynamoDB Local is accessible
     try:
         import requests
-        response = requests.get("http://localhost:8000", timeout=5)
+        response = requests.get(settings.dynamodb_endpoint_url, timeout=5)
         print("DynamoDB Local is responding")
         return True
     except Exception:

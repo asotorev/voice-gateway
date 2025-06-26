@@ -48,4 +48,18 @@ class User:
             name=name,
             password_hash=password_hash,
             created_at=datetime.utcnow(),
-        ) 
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert user to dictionary for API responses, controlling what gets exposed.
+        
+        Returns:
+            Dict[str, Any]: User data as dictionary
+        """
+        return {
+            "id": self.id,
+            "email": self.email,
+            "name": self.name,
+            "created_at": self.created_at
+        } 

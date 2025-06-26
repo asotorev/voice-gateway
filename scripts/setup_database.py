@@ -212,11 +212,6 @@ def main():
     
     print()
     print("Database setup completed successfully!")
-    print()
-    print("Next steps:")
-    print("1. Implement repository with DynamoDB integration (Commit 5)")
-    print("2. Update use cases to use real persistence")
-    print("3. Test end-to-end functionality")
     
     return True
 
