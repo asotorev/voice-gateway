@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "language": "es",
+    "total_words": 100,
+    "created_date": "2024-01-15",
+    "last_updated": "2024-01-15",
+    "validation_criteria": {
+      "min_length": 6,
+      "max_length": 12,
+      "no_accents": true,
+      "no_special_chars": true,
+      "phonetically_distinctive": true,
+      "whisper_compatible": true,
+      "pre_validated": true
+    },
+    "entropy": {
+      "total_combinations": 9900,
+      "entropy_bits": 13.27
+    }
+  },
+  "words": [
+    "academia", "actividad", "alimento", "almohada", "animal", "aparato", "archivo",
+    "ardilla", "aventura", "bandera", "bebida", "biblioteca", "bicicleta", "billete", "borracho",
+    "botella", "caballo", "cabeza", "cadena", "calavera", "camino", "campana", "caramelo",
+    "carretera", "cascada", "castillo", "celular", "cerebro", "cerveza", "chalupa", "chocolate",
+    "cocina", "colegio", "computadora", "conejo", "corona", "crucero", "cuaderno", "cuchara",
+    "desierto", "diablito", "dinero", "documento", "edificio", "elefante", "elemento", "escalera",
+    "escritorio", "escuela", "estrella", "familia", "farmacia", "felicidad", "gallina", "gorrito",
+    "guitarra", "hermano", "hospital", "iguana", "instituto", "jirafa", "laboratorio", "literatura",
+    "mariposa", "medicina", "mercado", "mochila", "mosquito", "movimiento", "naturaleza", "oficina",
+    "oportunidad", "organismo", "palacio", "paloma", "panorama", "paraguas", "persona", "pescado",
+    "planeta", "problema", "residencia", "respuesta", "rinoceronte", "semilla", "sirena", "soldado",
+    "sorpresa", "territorio", "tortuga", "trabajo", "transporte", "universo", "valiente", "venado",
+    "ventana", "ventilador", "vestido", "viajero", "victoria"
+  ],
+  "entropy_bits": 13.3,
+  "total_combinations": 9900,
+  "curated_by": "project_team",
+  "last_updated": "2024-01-15"
+} 
