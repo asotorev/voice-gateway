@@ -18,7 +18,7 @@ class PasswordServicePort(ABC):
     """
     
     @abstractmethod
-    async def generate_password(self) -> Tuple[str, List[str]]:
+    def generate_password(self) -> Tuple[str, List[str]]:
         """
         Generate a secure 2-word password for voice authentication.
         

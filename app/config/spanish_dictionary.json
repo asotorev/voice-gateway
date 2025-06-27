@@ -3,8 +3,11 @@
     "version": "1.0.0",
     "language": "es",
     "total_words": 100,
+    "total_combinations": 9900,
+    "entropy_bits": 13.27,
     "created_date": "2024-01-15",
     "last_updated": "2024-01-15",
+    "curated_by": "project_team",
     "validation_criteria": {
       "min_length": 6,
       "max_length": 12,
@@ -13,10 +16,6 @@
       "phonetically_distinctive": true,
       "whisper_compatible": true,
       "pre_validated": true
-    },
-    "entropy": {
-      "total_combinations": 9900,
-      "entropy_bits": 13.27
     }
   },
   "words": [
@@ -33,9 +32,5 @@
     "planeta", "problema", "residencia", "respuesta", "rinoceronte", "semilla", "sirena", "soldado",
     "sorpresa", "territorio", "tortuga", "trabajo", "transporte", "universo", "valiente", "venado",
     "ventana", "ventilador", "vestido", "viajero", "victoria"
-  ],
-  "entropy_bits": 13.3,
-  "total_combinations": 9900,
-  "curated_by": "project_team",
-  "last_updated": "2024-01-15"
+  ]
 } 

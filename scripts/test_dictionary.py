@@ -52,7 +52,7 @@ class DictionaryValidator:
         print("\nValidating dictionary structure...")
         
         required_keys = ['metadata', 'words']
-        metadata_keys = ['version', 'language', 'total_words', 'validation_criteria', 'entropy']
+        metadata_keys = ['version', 'language', 'total_words', 'validation_criteria', 'total_combinations', 'entropy_bits']
         
         try:
             # Check top-level structure
@@ -159,9 +159,8 @@ class DictionaryValidator:
             return False
         
         # Validate entropy calculation
-        entropy_data = metadata['entropy']
         expected_combinations = actual_count * (actual_count - 1)  # 2 words without replacement
-        declared_combinations = entropy_data['total_combinations']
+        declared_combinations = metadata['total_combinations']
         
         if expected_combinations != declared_combinations:
             print(f"ERROR: Entropy calculation error: expected {expected_combinations}, declared {declared_combinations}")
@@ -170,7 +169,7 @@ class DictionaryValidator:
         print(f"Metadata consistency validated")
         print(f"   Words: {actual_count} (no duplicates)")
         print(f"   Combinations: {declared_combinations:,}")
-        print(f"   Entropy: {entropy_data['entropy_bits']:.2f} bits")
+        print(f"   Entropy: {metadata['entropy_bits']:.2f} bits")
         
         return True
     
