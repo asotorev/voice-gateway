@@ -18,15 +18,12 @@ class PasswordServicePort(ABC):
     """
     
     @abstractmethod
-    def generate_password(self) -> Tuple[str, List[str]]:
+    def generate_password(self) -> str:
         """
         Generate a secure 2-word password for voice authentication.
         
         Returns:
-            Tuple[str, List[str]]: (complete_password, list_of_words_used)
-            
-        Example:
-            ("casa verde", ["casa", "verde"])
+            str: Complete password string (e.g., "biblioteca tortuga")
             
         Raises:
             ValueError: If unable to generate unique password after retries
@@ -59,5 +56,18 @@ class PasswordServicePort(ABC):
         
         Returns:
             dict: Dictionary metadata (size, language, entropy, etc.)
+        """
+        pass
+    
+    @abstractmethod
+    def hash_password(self, password: str) -> str:
+        """
+        Hash password using secure algorithm.
+        
+        Args:
+            password: Plain text password
+            
+        Returns:
+            str: Hashed password
         """
         pass 

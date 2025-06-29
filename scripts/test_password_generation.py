@@ -63,19 +63,14 @@ class PasswordGenerationTester:
         
         try:
             # Generate a single password
-            password, words = self.password_service.generate_password()
+            password = self.password_service.generate_password()
             
             # Validate structure (important for catching implementation errors)
             if not isinstance(password, str):
                 print("ERROR: Password is not a string")
                 return False
-                
-            if not isinstance(words, list):
-                print("ERROR: Words is not a list")
-                return False
             
             print(f"   Generated password: '{password}'")
-            print(f"   Words used: {words}")
             
             # Validate format using the service method
             if not self.password_service.validate_password_format(password):
@@ -83,28 +78,23 @@ class PasswordGenerationTester:
                 return False
             
             # Additional format checks for thoroughness
-            password_words = password.split()
-            if len(password_words) != 2:
-                print(f"ERROR: Password should have 2 words, got {len(password_words)}")
-                return False
-            
-            # Verify password string matches word list
-            if password_words != words:
-                print("ERROR: Password string doesn't match word list")
+            password_word_list = password.split()
+            if len(password_word_list) != 2:
+                print(f"ERROR: Password should have 2 words, got {len(password_word_list)}")
                 return False
             
             # Check word count
-            if len(words) != 2:
-                print(f"ERROR: Expected 2 words, got {len(words)}")
+            if len(password_word_list) != 2:
+                print(f"ERROR: Expected 2 words, got {len(password_word_list)}")
                 return False
             
             # Check words are different
-            if words[0] == words[1]:
+            if password_word_list[0] == password_word_list[1]:
                 print("ERROR: Both words are identical")
                 return False
             
             # Check words are from dictionary
-            if words[0] not in self.password_service._words or words[1] not in self.password_service._words:
+            if password_word_list[0] not in self.password_service._words or password_word_list[1] not in self.password_service._words:
                 print("ERROR: Generated words not found in dictionary")
                 return False
             
@@ -173,9 +163,9 @@ class PasswordGenerationTester:
             all_words = []
             
             for _ in range(sample_size):
-                password, words = self.password_service.generate_password()
+                password = self.password_service.generate_password()
                 passwords.append(password)
-                all_words.extend(words)
+                all_words.extend(password.split())
             
             # Check for duplicates
             unique_passwords = set(passwords)
@@ -253,7 +243,7 @@ class PasswordGenerationTester:
             collision_count = 0
             
             for i in range(iterations):
-                password, _ = self.password_service.generate_password()
+                password = self.password_service.generate_password()
                 
                 if password in previous_passwords:
                     collision_count += 1

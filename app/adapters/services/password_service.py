@@ -66,15 +66,12 @@ class PasswordService(PasswordServicePort):
         except Exception as e:
             raise RuntimeError(f"Error loading dictionary: {e}")
     
-    def generate_password(self) -> Tuple[str, List[str]]:
+    def generate_password(self) -> str:
         """
         Generate a cryptographically secure 2-word password.
         
         Returns:
-            Tuple[str, List[str]]: (complete_password, list_of_words_used)
-            
-        Example:
-            ("biblioteca tortuga", ["biblioteca", "tortuga"])
+            str: Complete password string (e.g., "biblioteca tortuga")
             
         Raises:
             RuntimeError: If dictionary is not available
@@ -92,7 +89,7 @@ class PasswordService(PasswordServicePort):
         # Create password string
         password = " ".join(selected_words)
         
-        return password, selected_words
+        return password
     
     def validate_password_format(self, password: str) -> bool:
         """
@@ -182,3 +179,16 @@ class PasswordService(PasswordServicePort):
                 continue
                 
         return samples
+    
+    def hash_password(self, password: str) -> str:
+        """
+        Hash password using SHA-256.
+        
+        Args:
+            password: Plain text password
+            
+        Returns:
+            str: Hexadecimal hash of password
+        """
+        import hashlib
+        return hashlib.sha256(password.encode('utf-8')).hexdigest()
