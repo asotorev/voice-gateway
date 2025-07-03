@@ -3,8 +3,7 @@ Password service port for Voice Gateway.
 Defines interface for secure password generation for voice authentication.
 """
 from abc import ABC, abstractmethod
-from typing import Tuple, List
-
+from typing import List, Dict, Any
 
 class PasswordServicePort(ABC):
     """
@@ -28,6 +27,24 @@ class PasswordServicePort(ABC):
         Raises:
             ValueError: If unable to generate unique password after retries
             RuntimeError: If dictionary is unavailable or corrupted
+        """
+        pass
+    
+    @abstractmethod
+    def generate_unique_password(self, existing_hashes: List[str], max_attempts: int = 10) -> str:
+        """
+        Generate a unique password that doesn't exist in the provided list.
+        
+        Args:
+            existing_hashes: List of password hashes to avoid
+            max_attempts: Maximum number of generation attempts
+            
+        Returns:
+            str: Unique password string
+            
+        Raises:
+            ValueError: If unable to generate unique password after max_attempts
+            RuntimeError: If dictionary is unavailable
         """
         pass
     
@@ -70,4 +87,4 @@ class PasswordServicePort(ABC):
         Returns:
             str: Hashed password
         """
-        pass 
+        pass

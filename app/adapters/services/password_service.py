@@ -4,8 +4,9 @@ Generates cryptographically secure 2-word passwords using curated Spanish dictio
 """
 import json
 import secrets
+import math
 from pathlib import Path
-from typing import Tuple, List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from app.core.ports.password_service import PasswordServicePort
 
 
@@ -14,7 +15,7 @@ class PasswordService(PasswordServicePort):
     Password generation service using curated dictionary.
     
     Generates cryptographically secure 2-word passwords optimized for
-    voice authentication with Whisper ASR compatibility.
+    voice authentication with Whisper ASR compatibility and uniqueness validation.
     """
     
     def __init__(self, dictionary_path: str = None):
@@ -91,6 +92,45 @@ class PasswordService(PasswordServicePort):
         
         return password
     
+    def generate_unique_password(self, existing_hashes: List[str], max_attempts: int = 10) -> str:
+        """
+        Generate a unique password that doesn't exist in the provided list.
+        
+        Args:
+            existing_hashes: List of password hashes to avoid
+            max_attempts: Maximum number of generation attempts
+            
+        Returns:
+            str: Unique password string
+            
+        Raises:
+            ValueError: If unable to generate unique password after max_attempts
+            RuntimeError: If dictionary is unavailable
+        """
+        if not self._words:
+            raise RuntimeError("Dictionary not loaded")
+        
+        # Convert to set for O(1) lookup performance
+        existing_set = set(existing_hashes) if existing_hashes else set()
+        
+        for attempt in range(max_attempts):
+            password = self.generate_password()
+            password_hash = self.hash_password(password)
+            
+            if password_hash not in existing_set:
+                return password
+        
+        # Calculate total possible combinations for error message
+        word_count = len(self._words)
+        total_combinations = word_count * (word_count - 1)
+        
+        raise ValueError(
+            f"Unable to generate unique password after {max_attempts} attempts. "
+            f"Existing hashes: {len(existing_hashes)}, "
+            f"Total combinations: {total_combinations}, "
+            f"Consider increasing dictionary size or max_attempts."
+        )
+    
     def validate_password_format(self, password: str) -> bool:
         """
         Validate if password matches expected 2-word format.
@@ -153,7 +193,6 @@ class PasswordService(PasswordServicePort):
         combinations = word_count * (word_count - 1)
         
         # Calculate entropy: log2(combinations)
-        import math
         entropy = math.log2(combinations) if combinations > 0 else 0.0
         
         return entropy
@@ -179,7 +218,7 @@ class PasswordService(PasswordServicePort):
                 continue
                 
         return samples
-    
+
     def hash_password(self, password: str) -> str:
         """
         Hash password using SHA-256.
