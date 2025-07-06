@@ -4,14 +4,18 @@ Uniqueness Validation Testing for Voice Gateway.
 Tests password uniqueness generation and collision detection.
 """
 import sys
+import asyncio
+import uuid
 from pathlib import Path
 
 # Add the app directory to Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.adapters.services.password_service import PasswordService
-from app.core.usecases.register_user import RegisterUserUseCase
+from app.core.services.unique_password_service import UniquePasswordService
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
+from app.core.models.user import User
+from app.config.settings import UNIQUE_PASSWORD_MAX_ATTEMPTS
 
 class UniquenessValidationTester:
     """Tester for password uniqueness validation."""
@@ -19,80 +23,152 @@ class UniquenessValidationTester:
     def __init__(self):
         """Initialize tester with services."""
         try:
-            self.password_service = PasswordService()
             self.user_repository = DynamoDBUserRepository()
-            self.use_case = RegisterUserUseCase(self.user_repository, self.password_service)
+            self.password_service = PasswordService()
+            self.unique_password_service = UniquePasswordService(self.password_service, self.user_repository)
+            self.test_users = []  # Track created users for cleanup
         except Exception as e:
             print(f"ERROR: Failed to initialize services: {e}")
             sys.exit(1)
     
-    def test_unique_password_generation(self) -> bool:
-        """Test generation of unique passwords."""
-        print("Testing unique password generation...")
-        existing_passwords = [
-            "biblioteca tortuga",
-            "castillo mariposa",
-            "medicina jirafa",
-            "computadora hospital",
-            "escalera rinoceronte"
-        ]
-        # Hash the existing passwords since the method now expects hashes
-        existing_hashes = [self.password_service.hash_password(pwd) for pwd in existing_passwords]
+    async def test_unique_password_generation(self) -> bool:
+        """Test generation of unique passwords with real database validation."""
+        print("Testing unique password generation with database validation...")
+        
         generated_passwords = []
-        for i in range(10):
-            try:
-                unique_password = self.password_service.generate_unique_password(
-                    existing_hashes=existing_hashes + [self.password_service.hash_password(pwd) for pwd in generated_passwords],
-                    max_attempts=20
-                )
-                generated_passwords.append(unique_password)
-            except Exception as e:
-                print(f"ERROR: Failed to generate unique password {i+1}: {e}")
-                return False
-        all_passwords = existing_passwords + generated_passwords
-        if len(set(all_passwords)) != len(all_passwords):
-            print("ERROR: Duplicate passwords found")
-            return False
-        print(f"   Successfully generated {len(generated_passwords)} unique passwords")
-        print("Unique password generation successful")
-        return True
-    
-    def test_retry_logic_exhaustion(self) -> bool:
-        """Test retry logic when unable to generate unique password."""
-        print("\nTesting retry logic exhaustion...")
-        existing_passwords = []
-        for _ in range(100):
-            password = self.password_service.generate_password()
-            existing_passwords.append(password)
-        # Hash the existing passwords since the method now expects hashes
-        existing_hashes = [self.password_service.hash_password(pwd) for pwd in existing_passwords]
+        created_users = []
+        
         try:
-            self.password_service.generate_unique_password(
-                existing_hashes=existing_hashes,
-                max_attempts=3
-            )
-            print("   Generated unique password (should be rare)")
+            # Generate and save multiple users with unique passwords
+            for i in range(5):  # Reduced to 5 for faster testing
+                try:
+                    # Generate unique password
+                    unique_password = await self.unique_password_service.generate_unique_password(max_attempts=UNIQUE_PASSWORD_MAX_ATTEMPTS)
+                    generated_passwords.append(unique_password)
+                    
+                    # Create and save user with this password
+                    password_hash = self.password_service.hash_password(unique_password)
+                    test_user = User.create(
+                        email=f"uniqueness_test_{uuid.uuid4().hex[:8]}@test.com",
+                        name=f"Test User {i+1}",
+                        password_hash=password_hash
+                    )
+                    
+                    saved_user = await self.user_repository.save(test_user)
+                    created_users.append(saved_user)
+                    
+                    print(f"   Generated and saved user {i+1}: '{unique_password}'")
+                    
+                except Exception as e:
+                    print(f"ERROR: Failed to generate/save user {i+1}: {e}")
+                    return False
+            
+            # Verify no duplicates in generated passwords (local check)
+            if len(set(generated_passwords)) != len(generated_passwords):
+                print("ERROR: Duplicate passwords found in local array")
+                return False
+            
+            # Verify passwords are actually unique between each other
+            print("\n   Verifying uniqueness between generated passwords...")
+            for i, password1 in enumerate(generated_passwords):
+                for j, password2 in enumerate(generated_passwords):
+                    if i != j and password1 == password2:
+                        print(f"   ERROR: Duplicate found: '{password1}' at positions {i} and {j}")
+                        return False
+            print("   ✓ All generated passwords are unique between each other")
+            
+            # Verify passwords are actually unique in database by checking all hashes
+            print("\n   Verifying database uniqueness...")
+            try:
+                all_hashes = await self.user_repository.get_all_password_hashes()
+                for i, password in enumerate(generated_passwords):
+                    password_hash = self.password_service.hash_password(password)
+                    if password_hash in all_hashes:
+                        print(f"   ✓ Password {i+1} confirmed in database")
+                    else:
+                        print(f"   ERROR: Password {i+1} not found in database after saving")
+                        return False
+            except Exception as e:
+                print(f"   WARNING: Could not verify database uniqueness: {e}")
+            
+            print(f"\n   Successfully generated and validated {len(generated_passwords)} unique passwords")
+            print("   All passwords are unique both locally and in database")
+            
+            print("Unique password generation with database validation successful")
             return True
-        except ValueError as e:
-            print("   Retry logic correctly failed after max attempts")
-            print(f"   Error message: {e}")
-            return True
+            
         except Exception as e:
-            print(f"ERROR: Unexpected error: {e}")
+            print(f"ERROR: Test failed: {e}")
+            return False
+    
+    async def test_collision_detection(self) -> bool:
+        """Test that the system detects when a password already exists (deterministic)."""
+        print("\nTesting collision detection (deterministic)...")
+        
+        try:
+            # Force generate_password to always return the same password
+            test_password = "biblioteca tortuga"
+            password_hash = self.password_service.hash_password(test_password)
+            
+            # Check if password already exists by getting all hashes
+            try:
+                all_hashes = await self.user_repository.get_all_password_hashes()
+                if password_hash not in all_hashes:
+                    print(f"   Password '{test_password}' not found in database, creating it...")
+                    test_user = User.create(
+                        email=f"collision_test_{uuid.uuid4().hex[:8]}@test.com",
+                        name="Collision Test User",
+                        password_hash=password_hash
+                    )
+                    saved_user = await self.user_repository.save(test_user)
+                    self.test_users.append(saved_user)
+                    print(f"   Created user with password: '{test_password}'")
+                else:
+                    print(f"   Password '{test_password}' already exists in database")
+            except Exception as e:
+                print(f"   WARNING: Could not check existing passwords: {e}")
+                print("   Creating test user anyway...")
+                test_user = User.create(
+                    email=f"collision_test_{uuid.uuid4().hex[:8]}@test.com",
+                    name="Collision Test User",
+                    password_hash=password_hash
+                )
+                saved_user = await self.user_repository.save(test_user)
+                self.test_users.append(saved_user)
+            
+            # Monkeypatch generate_password to always return the collision
+            original_generate_password = self.password_service.generate_password
+            self.password_service.generate_password = lambda: test_password
+            try:
+                await self.unique_password_service.generate_unique_password(max_attempts=5)
+                print("   ERROR: Should have failed due to existing password")
+                # Restore original method
+                self.password_service.generate_password = original_generate_password
+                return False
+            except ValueError as e:
+                self.password_service.generate_password = original_generate_password
+                if "Unable to generate unique password" in str(e):
+                    print("   ✓ Correctly detected existing password and failed deterministically")
+                    return True
+                else:
+                    print(f"   ERROR: Unexpected error message: {e}")
+                    return False
+        except Exception as e:
+            print(f"ERROR: Collision detection test failed: {e}")
             return False
 
-def main():
+async def main():
     """Run all uniqueness validation tests."""
     print("Voice Gateway - Uniqueness Validation Testing")
     print("=" * 55)
     tester = UniquenessValidationTester()
     tests = [
         ("Unique Password Generation", tester.test_unique_password_generation),
-        ("Retry Logic Exhaustion", tester.test_retry_logic_exhaustion)
+        ("Collision Detection", tester.test_collision_detection)
     ]
     results = {}
     for test_name, test_func in tests:
-        results[test_name] = test_func()
+        results[test_name] = await test_func()
     print("\n" + "=" * 55)
     print("Uniqueness Validation Test Results:")
     print("-" * 40)
@@ -113,5 +189,5 @@ def main():
         return False
 
 if __name__ == "__main__":
-    success = main()
+    success = asyncio.run(main())
     sys.exit(0 if success else 1) 

@@ -72,3 +72,6 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+# Password generation settings
+UNIQUE_PASSWORD_MAX_ATTEMPTS = 20  # Maximum attempts for unique password generation

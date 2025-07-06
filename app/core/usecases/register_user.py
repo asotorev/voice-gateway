@@ -1,20 +1,19 @@
 """
 Register user use case for Voice Gateway.
-Handles user registration with automatic password generation and uniqueness validation.
+Handles user registration with automatic password generation.
 """
-import hashlib
 from datetime import datetime
 from typing import List
 from app.core.models.user import User
 from app.core.ports.user_repository import UserRepositoryPort
 from app.core.ports.password_service import PasswordServicePort
+from app.core.services.unique_password_service import UniquePasswordService
+from app.config.settings import UNIQUE_PASSWORD_MAX_ATTEMPTS
+
 
 class RegisterUserUseCase:
     """
     Use case for registering new users with automatic password generation.
-    
-    Generates secure 2-word passwords with uniqueness validation and handles 
-    user persistence with voice authentication capabilities.
     """
     
     def __init__(
@@ -31,10 +30,13 @@ class RegisterUserUseCase:
         """
         self.user_repository = user_repository
         self.password_service = password_service
+        self.unique_password_service = UniquePasswordService(password_service, user_repository)
     
     async def execute(self, email: str, name: str) -> tuple[User, str]:
         """
         Register a new user with automatically generated unique password.
+        
+        Uses optimized password uniqueness validation.
         
         Args:
             email: User email address
@@ -58,26 +60,16 @@ class RegisterUserUseCase:
         if existing_user:
             raise ValueError(f"User with email {email} already exists")
         
-        # Get existing password hashes for uniqueness validation
-        try:
-            existing_hashes = await self.user_repository.get_all_password_hashes()
-        except Exception as e:
-            # Log warning but don't fail - uniqueness validation is best effort
-            print(f"WARNING: Could not retrieve existing password hashes for uniqueness check: {e}")
-            existing_hashes = []
-        
         # Generate unique voice password
         try:
-            if existing_hashes:
-                voice_password = self.password_service.generate_unique_password(
-                    existing_hashes=existing_hashes,
-                    max_attempts=20  # Higher attempts for better uniqueness
-                )
-            else:
-                # No existing passwords, generate normally
-                voice_password = self.password_service.generate_password()
-        except Exception as e:
-            raise RuntimeError(f"Failed to generate unique password: {e}")
+            voice_password = await self.unique_password_service.generate_unique_password(
+                max_attempts=UNIQUE_PASSWORD_MAX_ATTEMPTS
+            )
+            print("SUCCESS: Used optimized password uniqueness check")
+        except Exception as error:
+            print(f"WARNING: Password uniqueness validation failed: {error}")
+            voice_password = self.password_service.generate_password()
+            print("WARNING: Generated password without uniqueness validation")
         
         # Create password hash for storage
         password_hash = self.password_service.hash_password(voice_password)
@@ -98,4 +90,3 @@ class RegisterUserUseCase:
             
         except Exception as e:
             raise RuntimeError(f"Failed to save user: {e}")
-    

@@ -13,7 +13,6 @@ class PasswordServicePort(ABC):
     - Exactly 2 words for memorability
     - Phonetically clear words for speech recognition
     - Cryptographically secure generation
-    - Uniqueness validation against existing passwords
     """
     
     @abstractmethod
@@ -30,23 +29,7 @@ class PasswordServicePort(ABC):
         """
         pass
     
-    @abstractmethod
-    def generate_unique_password(self, existing_hashes: List[str], max_attempts: int = 10) -> str:
-        """
-        Generate a unique password that doesn't exist in the provided list.
-        
-        Args:
-            existing_hashes: List of password hashes to avoid
-            max_attempts: Maximum number of generation attempts
-            
-        Returns:
-            str: Unique password string
-            
-        Raises:
-            ValueError: If unable to generate unique password after max_attempts
-            RuntimeError: If dictionary is unavailable
-        """
-        pass
+
     
     @abstractmethod
     def validate_password_format(self, password: str) -> bool:

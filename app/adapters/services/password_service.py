@@ -6,7 +6,7 @@ import json
 import secrets
 import math
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from app.core.ports.password_service import PasswordServicePort
 
 
@@ -92,44 +92,7 @@ class PasswordService(PasswordServicePort):
         
         return password
     
-    def generate_unique_password(self, existing_hashes: List[str], max_attempts: int = 10) -> str:
-        """
-        Generate a unique password that doesn't exist in the provided list.
-        
-        Args:
-            existing_hashes: List of password hashes to avoid
-            max_attempts: Maximum number of generation attempts
-            
-        Returns:
-            str: Unique password string
-            
-        Raises:
-            ValueError: If unable to generate unique password after max_attempts
-            RuntimeError: If dictionary is unavailable
-        """
-        if not self._words:
-            raise RuntimeError("Dictionary not loaded")
-        
-        # Convert to set for O(1) lookup performance
-        existing_set = set(existing_hashes) if existing_hashes else set()
-        
-        for attempt in range(max_attempts):
-            password = self.generate_password()
-            password_hash = self.hash_password(password)
-            
-            if password_hash not in existing_set:
-                return password
-        
-        # Calculate total possible combinations for error message
-        word_count = len(self._words)
-        total_combinations = word_count * (word_count - 1)
-        
-        raise ValueError(
-            f"Unable to generate unique password after {max_attempts} attempts. "
-            f"Existing hashes: {len(existing_hashes)}, "
-            f"Total combinations: {total_combinations}, "
-            f"Consider increasing dictionary size or max_attempts."
-        )
+
     
     def validate_password_format(self, password: str) -> bool:
         """
@@ -211,7 +174,8 @@ class PasswordService(PasswordServicePort):
         
         for _ in range(count):
             try:
-                password, words = self.generate_password()
+                password = self.generate_password()
+                words = password.split()
                 samples.append((password, words))
             except Exception:
                 # Skip failed generation
