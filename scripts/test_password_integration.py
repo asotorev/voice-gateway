@@ -16,6 +16,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from app.core.usecases.register_user import RegisterUserUseCase
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
 from app.adapters.services.password_service import PasswordService
+from app.core.models.user import User
 from app.config.settings import settings
 
 
@@ -28,6 +29,7 @@ class IntegrationTester:
         self.user_repository = DynamoDBUserRepository()
         self.password_service = PasswordService()
         self.use_case = RegisterUserUseCase(self.user_repository, self.password_service)
+        self.test_users = []  # Track created users for cleanup
     
     async def test_use_case_integration(self) -> bool:
         """Test use case with password generation integration."""
@@ -61,6 +63,9 @@ class IntegrationTester:
                 print("ERROR: User entity should not contain password in plain text")
                 return False
             
+            # Track user for cleanup
+            self.test_users.append(user)
+            
             print(f"   User created: {user.name} ({user.email})")
             print(f"   Generated password: '{voice_password}'")
             print("Use case integration successful")
@@ -70,7 +75,7 @@ class IntegrationTester:
             print(f"ERROR: Use case integration failed: {e}")
             return False
     
-    def test_http_endpoint_integration(self) -> bool:
+    async def test_http_endpoint_integration(self) -> bool:
         """Test HTTP endpoint with password generation."""
         print("\nTesting HTTP endpoint integration...")
         
@@ -123,6 +128,14 @@ class IntegrationTester:
                 print("ERROR: Generated password format is invalid")
                 return False
             
+            # Track user for cleanup (if we can retrieve it)
+            try:
+                user = await self.user_repository.get_by_email(test_email)
+                if user:
+                    self.test_users.append(user)
+            except Exception:
+                pass
+            
             print(f"   User registered: {user_data['name']} ({user_data['email']})")
             print(f"   Generated password: '{voice_password}'")
             print("HTTP endpoint integration successful")
@@ -135,7 +148,7 @@ class IntegrationTester:
             print(f"ERROR: HTTP endpoint test failed: {e}")
             return False
     
-    def test_duplicate_registration(self) -> bool:
+    async def test_duplicate_registration(self) -> bool:
         """Test duplicate email registration handling."""
         print("\nTesting duplicate registration handling...")
         
@@ -160,6 +173,14 @@ class IntegrationTester:
             if response.status_code != 200:
                 print(f"ERROR: First registration failed with status {response.status_code}")
                 return False
+            
+            # Track user for cleanup
+            try:
+                user = await self.user_repository.get_by_email(test_email)
+                if user:
+                    self.test_users.append(user)
+            except Exception:
+                pass
             
             # Now try to register the same email again
             duplicate_data = {
@@ -192,11 +213,14 @@ class IntegrationTester:
             print("Duplicate registration handling successful")
             return True
             
+        except requests.RequestException as e:
+            print(f"ERROR: HTTP request failed: {e}")
+            return False
         except Exception as e:
             print(f"ERROR: Duplicate registration test failed: {e}")
             return False
     
-    def test_password_service_info(self) -> bool:
+    async def test_password_service_info(self) -> bool:
         """Test password service information access."""
         print("\nTesting password service information...")
         
@@ -224,6 +248,18 @@ class IntegrationTester:
         except Exception as e:
             print(f"ERROR: Password service info test failed: {e}")
             return False
+    
+    async def cleanup_test_users(self):
+        """Clean up all test users from database."""
+        if not self.test_users:
+            return
+            
+        print(f"\nCleaning up {len(self.test_users)} test users...")
+        for user in self.test_users:
+            try:
+                await self.user_repository.delete(str(user.id))
+            except Exception as e:
+                print(f"   Warning: Could not cleanup user {user.id}: {e}")
 
 
 async def main():
@@ -247,10 +283,10 @@ async def main():
     
     results = {}
     for test_name, test_func in tests:
-        if asyncio.iscoroutinefunction(test_func):
-            results[test_name] = await test_func()
-        else:
-            results[test_name] = test_func()
+        results[test_name] = await test_func()
+    
+    # Cleanup test users
+    await tester.cleanup_test_users()
     
     # Summary
     print("\n" + "=" * 50)

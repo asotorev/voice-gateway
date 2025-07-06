@@ -120,6 +120,30 @@ class AWSConfig:
         
         return results
 
+    @property
+    def dynamodb_client(self):
+        """
+        Get or create DynamoDB client with proper configuration.
+        """
+        if not hasattr(self, '_dynamodb_client'):
+            kwargs = {
+                'service_name': 'dynamodb',
+                'config': self._boto_config
+            }
+            if settings.use_local_dynamodb:
+                kwargs.update({
+                    'endpoint_url': settings.dynamodb_endpoint_url,
+                    'region_name': settings.aws_region,
+                    'aws_access_key_id': 'fakeMyKeyId',
+                    'aws_secret_access_key': 'fakeSecretAccessKey'
+                })
+            else:
+                kwargs.update({
+                    'region_name': settings.aws_region
+                })
+            self._dynamodb_client = boto3.client(**kwargs)
+        return self._dynamodb_client
+
 
 # Global AWS configuration instance
 aws_config = AWSConfig()

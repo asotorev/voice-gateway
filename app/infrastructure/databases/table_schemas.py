@@ -15,18 +15,19 @@ class TableSchemas:
     - Relative audio paths to eliminate storage provider coupling
     - Granular timestamps for debugging and audit trails
     - Security-first approach with encryption and bcrypt hashing
+    - GSI optimization for password uniqueness validation
     """
     
     @staticmethod
     def users_table_schema(table_name: str) -> Dict[str, Any]:
         """
-        Users table schema with embedded voice embeddings.
+        Users table schema with embedded voice embeddings and password hash GSI.
         
         Optimized structure:
         - user_id (PK): UUID string - unique user identifier
         - name: User's full name
         - email: User's email address (unique via GSI)
-        - voice_password_hash: bcrypt hash of 2-word Spanish password
+        - password_hash: SHA-256 hash of 2-word Spanish password (indexed for immediate lookup)
         - voice_embeddings: Array of 3 embeddings, each containing:
             * audio_path: Relative path (e.g., 'user123/sample1.wav')
             * embedding_vector: 256-dimension vector from Resemblyzer
@@ -34,6 +35,10 @@ class TableSchemas:
         - created_at: ISO timestamp of user registration
         - updated_at: ISO timestamp of last modification
         - is_active: Boolean status for soft deletion
+    
+        GSI Indexes:
+        1. email-index: For user lookup by email
+        2. password-hash-index: For password uniqueness validation
     
         Args:
             table_name: Name for the DynamoDB table
@@ -56,7 +61,11 @@ class TableSchemas:
                 },
                 {
                     'AttributeName': 'email',
-                    'AttributeType': 'S'  # String for GSI
+                    'AttributeType': 'S'  # String for email GSI
+                },
+                {
+                    'AttributeName': 'password_hash',
+                    'AttributeType': 'S'  # String for password hash GSI
                 }
             ],
             'GlobalSecondaryIndexes': [
@@ -70,6 +79,18 @@ class TableSchemas:
                     ],
                     'Projection': {
                         'ProjectionType': 'ALL'
+                    }
+                },
+                {
+                    'IndexName': 'password-hash-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'password_hash',
+                            'KeyType': 'HASH'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'KEYS_ONLY'  # Only need to check existence
                     }
                 }
             ],
@@ -96,6 +117,10 @@ class TableSchemas:
                 {
                     'Key': 'Design',
                     'Value': 'SingleTable'
+                },
+                {
+                    'Key': 'Optimization',
+                    'Value': 'PasswordUniquenessO1Lookup'
                 }
             ]
         }
@@ -137,9 +162,15 @@ class TableSchemas:
         if not schema['KeySchema']:
             return False
         
-        # Validate AttributeDefinitions match KeySchema
+        # Validate AttributeDefinitions match KeySchema and GSI keys
         key_attributes = {key['AttributeName'] for key in schema['KeySchema']}
         defined_attributes = {attr['AttributeName'] for attr in schema['AttributeDefinitions']}
+        
+        # Also check GSI key attributes if they exist
+        if 'GlobalSecondaryIndexes' in schema:
+            for gsi in schema['GlobalSecondaryIndexes']:
+                gsi_attributes = {key['AttributeName'] for key in gsi['KeySchema']}
+                key_attributes.update(gsi_attributes)
         
         if not key_attributes.issubset(defined_attributes):
             return False
@@ -152,7 +183,8 @@ class TableSchemas:
         Get example of how user data will be stored in DynamoDB.
         
         Demonstrates the single table design with embedded voice embeddings
-        using relative paths for storage provider independence.
+        using relative paths for storage provider independence and password hash
+        for uniqueness validation.
         
         Returns:
             Example user item structure
@@ -161,7 +193,7 @@ class TableSchemas:
             'user_id': 'uuid-12345678-1234-1234-1234-123456789012',
             'name': 'Juan Pérez',
             'email': 'juan@ejemplo.com',
-            'voice_password_hash': '$2b$12$abc123def456...',  # bcrypt hash
+            'password_hash': '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj3bp.gS8C.m',  # bcrypt hash (indexed for immediate lookup)
             'voice_embeddings': [
                 {
                     'audio_path': 'user123/sample1.wav',        # Relative path
@@ -182,4 +214,5 @@ class TableSchemas:
             'created_at': '2024-01-15T10:30:00.000Z',
             'updated_at': '2024-01-15T10:33:01.789Z',
             'is_active': True
-        } 
+        }
+    

@@ -156,7 +156,7 @@ def test_example_user_structure():
         example = TableSchemas.get_example_user_structure()
         
         # Validate required fields
-        required_fields = ['user_id', 'name', 'email', 'voice_password_hash', 
+        required_fields = ['user_id', 'name', 'email', 'password_hash', 
                           'voice_embeddings', 'created_at', 'updated_at', 'is_active']
         
         for field in required_fields:
@@ -180,7 +180,7 @@ def test_example_user_structure():
             assert '/' in audio_path, f"audio_path should have folder structure"
         
         # Validate password is hashed
-        password_hash = example['voice_password_hash']
+        password_hash = example['password_hash']
         assert password_hash.startswith('$2b$'), "Password should be bcrypt hashed"
         
         print("Example user structure is valid")
