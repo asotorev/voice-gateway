@@ -2,9 +2,10 @@
 DynamoDB implementation of UserRepositoryPort.
 Provides real persistence using single table design with voice embeddings.
 """
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Key
 from app.core.models.user import User
 from app.core.ports.user_repository import UserRepositoryPort
 from app.config.aws_config import aws_config
@@ -17,6 +18,7 @@ class DynamoDBUserRepository(UserRepositoryPort):
     DynamoDB implementation of UserRepositoryPort.
     
     Uses single table design with embedded voice embeddings and relative audio paths.
+    Includes GSI optimization for password hash uniqueness checks.
     """
     
     def __init__(self):
@@ -113,6 +115,45 @@ class DynamoDBUserRepository(UserRepositoryPort):
         except Exception as e:
             raise Exception(f"Unexpected error getting user by ID: {str(e)}")
     
+    async def check_password_hash_exists(self, password_hash: str) -> bool:
+        """
+        Check if a password hash exists.
+        
+        Args:
+            password_hash: Hash to check for existence
+            
+        Returns:
+            bool: True if hash exists, False otherwise
+            
+        Raises:
+            Exception: If query fails
+        """
+        try:
+            # Use GSI for immediate lookup
+            response = self.table.query(
+                IndexName='password-hash-index',
+                KeyConditionExpression='password_hash = :hash',
+                ExpressionAttributeValues={':hash': password_hash},
+                Select='COUNT'  # Only get count, not actual items
+            )
+            
+            # If count > 0, hash exists
+            return response.get('Count', 0) > 0
+            
+        except ClientError as e:
+            raise Exception(f"Failed to check password hash: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error checking password hash: {str(e)}")
+    
+    async def delete(self, user_id: str) -> None:
+        """Delete a user by ID from DynamoDB."""
+        try:
+            self.table.delete_item(Key={'user_id': user_id})
+        except ClientError as e:
+            raise Exception(f"Failed to delete user: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error deleting user: {str(e)}")
+    
     def _to_dynamodb_item(self, user: User) -> dict:
         """
         Convert User domain entity to DynamoDB item.
@@ -178,37 +219,3 @@ class DynamoDBUserRepository(UserRepositoryPort):
             user.voice_embeddings = item['voice_embeddings']
         
         return user
-
-    async def get_all_password_hashes(self) -> List[str]:
-        """
-        Get only password hashes for uniqueness validation.
-        Returns:
-            List[str]: List of all password hashes in the system
-        Raises:
-            Exception: If scan operation fails
-        """
-        try:
-            # Use scan with projection to only get password_hash field
-            response = self.table.scan(
-                ProjectionExpression='password_hash',
-                Select='SPECIFIC_ATTRIBUTES'
-            )
-            hashes = []
-            for item in response.get('Items', []):
-                if 'password_hash' in item:
-                    hashes.append(item['password_hash'])
-            # Handle pagination if needed
-            while 'LastEvaluatedKey' in response:
-                response = self.table.scan(
-                    ProjectionExpression='password_hash',
-                    Select='SPECIFIC_ATTRIBUTES',
-                    ExclusiveStartKey=response['LastEvaluatedKey']
-                )
-                for item in response.get('Items', []):
-                    if 'password_hash' in item:
-                        hashes.append(item['password_hash'])
-            return hashes
-        except ClientError as e:
-            raise Exception(f"Failed to get password hashes: {e.response['Error']['Message']}")
-        except Exception as e:
-            raise Exception(f"Unexpected error getting password hashes: {str(e)}") 

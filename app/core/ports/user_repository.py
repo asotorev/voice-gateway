@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional
 
 from app.core.models.user import User
 
@@ -16,6 +16,11 @@ class UserRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def get_all_password_hashes(self) -> List[str]:
-        """Get only password hashes for uniqueness validation."""
+    async def check_password_hash_exists(self, password_hash: str) -> bool:
+        """Check if a password hash exists."""
+        pass
+
+    @abstractmethod
+    async def delete(self, user_id: str) -> None:
+        """Delete a user by ID."""
         pass 

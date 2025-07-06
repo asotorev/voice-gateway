@@ -77,19 +77,15 @@ class UniquenessValidationTester:
                         return False
             print("   ✓ All generated passwords are unique between each other")
             
-            # Verify passwords are actually unique in database by checking all hashes
+            # Verify passwords are actually unique in database
             print("\n   Verifying database uniqueness...")
-            try:
-                all_hashes = await self.user_repository.get_all_password_hashes()
-                for i, password in enumerate(generated_passwords):
-                    password_hash = self.password_service.hash_password(password)
-                    if password_hash in all_hashes:
-                        print(f"   ✓ Password {i+1} confirmed in database")
-                    else:
-                        print(f"   ERROR: Password {i+1} not found in database after saving")
-                        return False
-            except Exception as e:
-                print(f"   WARNING: Could not verify database uniqueness: {e}")
+            for i, password in enumerate(generated_passwords):
+                password_hash = self.password_service.hash_password(password)
+                exists = await self.user_repository.check_password_hash_exists(password_hash)
+                if not exists:
+                    print(f"   ERROR: Password {i+1} not found in database after saving")
+                    return False
+                print(f"   ✓ Password {i+1} confirmed in database")
             
             print(f"\n   Successfully generated and validated {len(generated_passwords)} unique passwords")
             print("   All passwords are unique both locally and in database")
@@ -100,6 +96,10 @@ class UniquenessValidationTester:
         except Exception as e:
             print(f"ERROR: Test failed: {e}")
             return False
+        finally:
+            # Always cleanup test users, regardless of success or failure
+            if created_users:
+                await self._cleanup_test_users(created_users)
     
     async def test_collision_detection(self) -> bool:
         """Test that the system detects when a password already exists (deterministic)."""
@@ -110,24 +110,9 @@ class UniquenessValidationTester:
             test_password = "biblioteca tortuga"
             password_hash = self.password_service.hash_password(test_password)
             
-            # Check if password already exists by getting all hashes
-            try:
-                all_hashes = await self.user_repository.get_all_password_hashes()
-                if password_hash not in all_hashes:
-                    print(f"   Password '{test_password}' not found in database, creating it...")
-                    test_user = User.create(
-                        email=f"collision_test_{uuid.uuid4().hex[:8]}@test.com",
-                        name="Collision Test User",
-                        password_hash=password_hash
-                    )
-                    saved_user = await self.user_repository.save(test_user)
-                    self.test_users.append(saved_user)
-                    print(f"   Created user with password: '{test_password}'")
-                else:
-                    print(f"   Password '{test_password}' already exists in database")
-            except Exception as e:
-                print(f"   WARNING: Could not check existing passwords: {e}")
-                print("   Creating test user anyway...")
+            exists = await self.user_repository.check_password_hash_exists(password_hash)
+            if not exists:
+                print(f"   Password '{test_password}' not found in database, creating it...")
                 test_user = User.create(
                     email=f"collision_test_{uuid.uuid4().hex[:8]}@test.com",
                     name="Collision Test User",
@@ -135,6 +120,9 @@ class UniquenessValidationTester:
                 )
                 saved_user = await self.user_repository.save(test_user)
                 self.test_users.append(saved_user)
+                print(f"   Created user with password: '{test_password}'")
+            else:
+                print(f"   Password '{test_password}' already exists in database")
             
             # Monkeypatch generate_password to always return the collision
             original_generate_password = self.password_service.generate_password
@@ -156,6 +144,17 @@ class UniquenessValidationTester:
         except Exception as e:
             print(f"ERROR: Collision detection test failed: {e}")
             return False
+    
+    async def _cleanup_test_users(self, users):
+        """Clean up test users from database."""
+        if not users:
+            return
+        print(f"   Cleaning up {len(users)} test users...")
+        for user in users:
+            try:
+                await self.user_repository.delete(str(user.id))
+            except Exception as e:
+                print(f"   Warning: Could not cleanup user {user.id}: {e}")
 
 async def main():
     """Run all uniqueness validation tests."""

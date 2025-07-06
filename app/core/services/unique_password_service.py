@@ -49,14 +49,6 @@ class UniquePasswordService:
         if not self.user_repository:
             raise RuntimeError("User repository not available")
         
-        # Get existing password hashes for uniqueness check
-        try:
-            existing_hashes = await self.user_repository.get_all_password_hashes()
-        except Exception as e:
-            # If we can't get existing hashes, fall back to generating without uniqueness check
-            print(f"WARNING: Could not retrieve existing password hashes: {e}")
-            return self.password_service.generate_password()
-        
         for attempt in range(max_attempts):
             # Generate a new password
             password = self.password_service.generate_password()
@@ -64,8 +56,9 @@ class UniquePasswordService:
             # Hash the password for uniqueness check
             password_hash = self.password_service.hash_password(password)
             
-            # Check if hash already exists in our list
-            if password_hash not in existing_hashes:
+            # Check if hash already exists
+            exists = await self.user_repository.check_password_hash_exists(password_hash)
+            if not exists:
                 return password
         
         # Calculate total possible combinations for error message
