@@ -14,7 +14,9 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from app.core.services.password_service import PasswordService
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
-from app.infrastructure.databases.dynamodb_setup import dynamodb_setup
+from app.infrastructure.databases.dynamodb_setup import DynamoDBSetup
+
+dynamodb_setup = DynamoDBSetup()
 
 @pytest.mark.performance
 def test_gsi_table_info(user_repository):
