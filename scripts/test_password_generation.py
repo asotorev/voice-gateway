@@ -12,7 +12,7 @@ from typing import List, Tuple
 # Add the app directory to Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app.adapters.services.password_service import PasswordService
+from app.core.services.password_service import PasswordService
 
 
 class PasswordGenerationTester:

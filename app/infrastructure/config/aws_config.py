@@ -3,21 +3,22 @@ AWS service configuration and client management.
 Handles connection to DynamoDB with environment-specific settings.
 """
 import boto3
-from typing import Optional
 from botocore.config import Config
-from botocore.exceptions import ClientError
-from .settings import settings
+from typing import Optional, Dict, Any
+from .infrastructure_settings import infra_settings
 
 
 class AWSConfig:
     """
     Manages AWS service connections and configuration.
+    Centralized configuration for DynamoDB.
     """
     
     def __init__(self):
         self._dynamodb_resource: Optional[boto3.resource] = None
+        self._dynamodb_client: Optional[boto3.client] = None
         self._boto_config = Config(
-            region_name=settings.aws_region,
+            region_name=infra_settings.aws_region,
             retries={
                 'max_attempts': 3,
                 'mode': 'adaptive'
@@ -27,38 +28,57 @@ class AWSConfig:
     
     @property
     def dynamodb_resource(self) -> boto3.resource:
-        """
-        Get or create DynamoDB resource with proper configuration.
-        """
+        """Get or create DynamoDB resource with proper configuration."""
         if self._dynamodb_resource is None:
             self._dynamodb_resource = self._create_dynamodb_resource()
         return self._dynamodb_resource
     
+    @property
+    def dynamodb_client(self) -> boto3.client:
+        """Get or create DynamoDB client with proper configuration."""
+        if self._dynamodb_client is None:
+            self._dynamodb_client = self._create_dynamodb_client()
+        return self._dynamodb_client
+    
     def _create_dynamodb_resource(self) -> boto3.resource:
-        """
-        Create DynamoDB resource with environment-specific configuration.
-        """
+        """Create DynamoDB resource with environment-specific configuration."""
         kwargs = {
             'service_name': 'dynamodb',
             'config': self._boto_config
         }
         
-        # Configure for local DynamoDB or AWS
-        if settings.use_local_dynamodb:
+        if infra_settings.use_local_dynamodb:
             kwargs.update({
-                'endpoint_url': settings.dynamodb_endpoint_url,
-                'region_name': settings.aws_region,
+                'endpoint_url': infra_settings.dynamodb_endpoint_url,
+                'region_name': infra_settings.aws_region,
                 'aws_access_key_id': 'fakeMyKeyId',
                 'aws_secret_access_key': 'fakeSecretAccessKey'
             })
         else:
-            # Production AWS configuration
-            # boto3 will use IAM roles, environment variables, or AWS config
             kwargs.update({
-                'region_name': settings.aws_region
+                'region_name': infra_settings.aws_region
             })
         
         return boto3.resource(**kwargs)
+    
+    def _create_dynamodb_client(self) -> boto3.client:
+        """Create DynamoDB client with environment-specific configuration."""
+        kwargs = {
+            'service_name': 'dynamodb',
+            'config': self._boto_config
+        }
+        if infra_settings.use_local_dynamodb:
+            kwargs.update({
+                'endpoint_url': infra_settings.dynamodb_endpoint_url,
+                'region_name': infra_settings.aws_region,
+                'aws_access_key_id': 'fakeMyKeyId',
+                'aws_secret_access_key': 'fakeSecretAccessKey'
+            })
+        else:
+            kwargs.update({
+                'region_name': infra_settings.aws_region
+            })
+        return boto3.client(**kwargs)
     
     def get_table(self, table_name: str):
         """
@@ -94,13 +114,13 @@ class AWSConfig:
             # Test DynamoDB connectivity
             dynamodb = self.dynamodb_resource
             
-            if settings.use_local_dynamodb:
+            if infra_settings.use_local_dynamodb:
                 # For local, try to list tables
                 list(dynamodb.tables.all())
                 results["dynamodb"] = {
                     "status": "healthy", 
                     "type": "local",
-                    "endpoint": settings.dynamodb_endpoint_url
+                    "endpoint": infra_settings.dynamodb_endpoint_url
                 }
             else:
                 # For AWS, test with a simple operation
@@ -108,42 +128,18 @@ class AWSConfig:
                 results["dynamodb"] = {
                     "status": "healthy", 
                     "type": "aws",
-                    "region": settings.aws_region
+                    "region": infra_settings.aws_region
                 }
                 
         except Exception as e:
             results["dynamodb"] = {
                 "status": "unhealthy", 
                 "error": str(e),
-                "type": "local" if settings.use_local_dynamodb else "aws"
+                "type": "local" if infra_settings.use_local_dynamodb else "aws"
             }
         
         return results
 
-    @property
-    def dynamodb_client(self):
-        """
-        Get or create DynamoDB client with proper configuration.
-        """
-        if not hasattr(self, '_dynamodb_client'):
-            kwargs = {
-                'service_name': 'dynamodb',
-                'config': self._boto_config
-            }
-            if settings.use_local_dynamodb:
-                kwargs.update({
-                    'endpoint_url': settings.dynamodb_endpoint_url,
-                    'region_name': settings.aws_region,
-                    'aws_access_key_id': 'fakeMyKeyId',
-                    'aws_secret_access_key': 'fakeSecretAccessKey'
-                })
-            else:
-                kwargs.update({
-                    'region_name': settings.aws_region
-                })
-            self._dynamodb_client = boto3.client(**kwargs)
-        return self._dynamodb_client
-
 
 # Global AWS configuration instance
-aws_config = AWSConfig()
+aws_config = AWSConfig() 

@@ -12,17 +12,17 @@ app_dir = Path(__file__).parent.parent
 sys.path.append(str(app_dir))
 
 from app.infrastructure.databases.dynamodb_setup import dynamodb_setup
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 def show_header():
     """Display setup header with environment info."""
     print("Voice Gateway - Database Setup")
     print("=" * 50)
-    print(f"Environment: {settings.environment}")
-    print(f"DynamoDB Endpoint: {settings.dynamodb_endpoint_url or 'AWS Default'}")
-    print(f"Region: {settings.aws_region}")
-    print(f"Users Table: {settings.users_table_name}")
+    print(f"Environment: {infra_settings.aws_region}")
+    print(f"DynamoDB Endpoint: {infra_settings.dynamodb_endpoint_url or 'AWS Default'}")
+    print(f"Region: {infra_settings.aws_region}")
+    print(f"Users Table: {infra_settings.users_table_name}")
     print()
 
 

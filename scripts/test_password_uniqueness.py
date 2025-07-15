@@ -11,11 +11,10 @@ from pathlib import Path
 # Add the app directory to Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app.adapters.services.password_service import PasswordService
+from app.core.models.user import User
+from app.core.services.password_service import PasswordService
 from app.core.services.unique_password_service import UniquePasswordService
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
-from app.core.models.user import User
-from app.config.settings import UNIQUE_PASSWORD_MAX_ATTEMPTS
 
 class UniquenessValidationTester:
     """Tester for password uniqueness validation."""
@@ -43,7 +42,7 @@ class UniquenessValidationTester:
             for i in range(5):  # Reduced to 5 for faster testing
                 try:
                     # Generate unique password
-                    unique_password = await self.unique_password_service.generate_unique_password(max_attempts=UNIQUE_PASSWORD_MAX_ATTEMPTS)
+                    unique_password = await self.unique_password_service.generate_unique_password(max_attempts=PasswordService.MAX_GENERATION_ATTEMPTS)
                     generated_passwords.append(unique_password)
                     
                     # Create and save user with this password

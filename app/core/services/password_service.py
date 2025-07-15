@@ -18,6 +18,24 @@ class PasswordService(PasswordServicePort):
     voice authentication with Whisper ASR compatibility and uniqueness validation.
     """
     
+    # Password Generation Rules (from PasswordPolicy)
+    REQUIRED_WORD_COUNT = 2  # Exactly 2 words per password
+    MAX_GENERATION_ATTEMPTS = 20  # Maximum attempts for unique password generation
+    
+    # Dictionary Constraints (from PasswordPolicy)
+    MIN_WORD_LENGTH = 3  # Minimum characters per word
+    MAX_WORD_LENGTH = 8  # Maximum characters per word
+    DICTIONARY_SIZE = 100  # Total words in Spanish dictionary
+    
+    # Security Requirements (from PasswordPolicy)
+    ENTROPY_BITS_MINIMUM = 13.0  # Minimum entropy for password security
+    TOTAL_COMBINATIONS_MINIMUM = 9900  # Minimum total password combinations
+    
+    # Validation Rules (from PasswordPolicy)
+    ALLOW_ACCENTS = False  # No accented characters in dictionary
+    ALLOW_SPECIAL_CHARS = False  # No special characters in words
+    REQUIRE_PHONETIC_DISTINCTION = True  # Words must be phonetically distinct
+    
     def __init__(self, dictionary_path: str = None):
         """
         Initialize password service.
@@ -91,8 +109,6 @@ class PasswordService(PasswordServicePort):
         password = " ".join(selected_words)
         
         return password
-    
-
     
     def validate_password_format(self, password: str) -> bool:
         """
@@ -195,3 +211,28 @@ class PasswordService(PasswordServicePort):
         """
         import hashlib
         return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    
+    @classmethod
+    def get_total_combinations(cls) -> int:
+        """Calculate total possible password combinations."""
+        # For 2 words without replacement: n * (n-1)
+        return cls.DICTIONARY_SIZE * (cls.DICTIONARY_SIZE - 1)
+    
+    @classmethod
+    def calculate_entropy_bits(cls) -> float:
+        """Calculate entropy in bits for password combinations."""
+        return math.log2(cls.get_total_combinations())
+    
+    @classmethod
+    def is_valid_word_length(cls, word: str) -> bool:
+        """Check if word length meets policy requirements."""
+        return cls.MIN_WORD_LENGTH <= len(word) <= cls.MAX_WORD_LENGTH
+    
+    @classmethod
+    def is_valid_password_format_policy(cls, password: str) -> bool:
+        """Check if password meets format requirements (class method version)."""
+        if not password or not password.strip():
+            return False
+        
+        words = password.strip().split()
+        return len(words) == cls.REQUIRED_WORD_COUNT 

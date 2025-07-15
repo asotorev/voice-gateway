@@ -6,12 +6,12 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.infrastructure.databases.dynamodb_setup import dynamodb_setup
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 def main():
     """Add password hash GSI to existing users table."""
-    table_name = settings.users_table_name
+    table_name = infra_settings.users_table_name
     
     # Check if table exists
     table_info = dynamodb_setup.get_table_info(table_name)
@@ -41,7 +41,7 @@ def main():
 
 def check_status():
     """Check if password GSI exists."""
-    table_name = settings.users_table_name
+    table_name = infra_settings.users_table_name
     table_info = dynamodb_setup.get_table_info(table_name)
     
     if not table_info['exists']:
@@ -64,7 +64,7 @@ def rollback():
         print("Cancelled")
         return False
     
-    table_name = settings.users_table_name
+    table_name = infra_settings.users_table_name
     client = dynamodb_setup.dynamodb.meta.client
     
     try:

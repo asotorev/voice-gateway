@@ -13,7 +13,7 @@ sys.path.append(str(app_dir))
 
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 def test_dynamodb_connection():
@@ -24,17 +24,17 @@ def test_dynamodb_connection():
         bool: True if connection successful, False otherwise
     """
     print("Testing DynamoDB connection...")
-    print(f"   Environment: {settings.environment}")
-    print(f"   Endpoint: {settings.dynamodb_endpoint_url}")
-    print(f"   Region: {settings.aws_region}")
+    print(f"   Environment: {infra_settings.aws_region}")
+    print(f"   Endpoint: {infra_settings.dynamodb_endpoint_url}")
+    print(f"   Region: {infra_settings.aws_region}")
     print()
     
     try:
         # Connect to DynamoDB using configured settings
         dynamodb = boto3.resource(
             'dynamodb',
-            endpoint_url=settings.dynamodb_endpoint_url,
-            region_name=settings.aws_region,
+            endpoint_url=infra_settings.dynamodb_endpoint_url,
+            region_name=infra_settings.aws_region,
             aws_access_key_id='fakeMyKeyId',
             aws_secret_access_key='fakeSecretAccessKey'
         )
@@ -143,7 +143,7 @@ def check_prerequisites():
     # Verify DynamoDB Local is accessible
     try:
         import requests
-        response = requests.get(settings.dynamodb_endpoint_url, timeout=5)
+        response = requests.get(infra_settings.dynamodb_endpoint_url, timeout=5)
         print("DynamoDB Local is responding")
         return True
     except Exception:

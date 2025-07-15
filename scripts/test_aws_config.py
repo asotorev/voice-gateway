@@ -10,8 +10,8 @@ from pathlib import Path
 app_dir = Path(__file__).parent.parent
 sys.path.append(str(app_dir))
 
-from app.config.aws_config import aws_config
-from app.config.settings import settings
+from app.infrastructure.config.aws_config import aws_config
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 def test_aws_config_layer():
@@ -22,9 +22,9 @@ def test_aws_config_layer():
         bool: True if abstraction layer works correctly
     """
     print("Testing AWS configuration abstraction...")
-    print(f"   Environment: {settings.environment}")
-    print(f"   Local DynamoDB: {settings.use_local_dynamodb}")
-    print(f"   Region: {settings.aws_region}")
+    print(f"   Environment: {infra_settings.aws_region}")
+    print(f"   Local DynamoDB: {infra_settings.use_local_dynamodb}")
+    print(f"   Region: {infra_settings.aws_region}")
     print()
     
     try:
@@ -86,7 +86,7 @@ def test_table_reference():
     print("Testing table reference functionality...")
     
     try:
-        table_name = settings.users_table_name
+        table_name = infra_settings.users_table_name
         print(f"Getting reference to table: {table_name}")
         
         table = aws_config.get_table(table_name)

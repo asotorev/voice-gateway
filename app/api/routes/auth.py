@@ -4,11 +4,11 @@ Handles user registration with automatic password generation and DynamoDB persis
 """
 from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.user import UserRegisterRequest, UserRegisterResponse
+from app.core.ports.password_service import PasswordServicePort
+from app.core.ports.user_repository import UserRepositoryPort
+from app.core.services.password_service import PasswordService
 from app.core.usecases.register_user import RegisterUserUseCase
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
-from app.adapters.services.password_service import PasswordService
-from app.core.ports.user_repository import UserRepositoryPort
-from app.core.ports.password_service import PasswordServicePort
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 

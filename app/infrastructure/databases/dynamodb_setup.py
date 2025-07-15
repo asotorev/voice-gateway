@@ -5,8 +5,8 @@ Provides automated table creation, deletion, and health monitoring with GSI supp
 import time
 from typing import List, Dict, Any
 from botocore.exceptions import ClientError
-from app.config.aws_config import aws_config
-from app.config.settings import settings
+from app.infrastructure.config.aws_config import aws_config
+from app.infrastructure.config.infrastructure_settings import infra_settings
 from .table_schemas import TableSchemas
 
 
@@ -40,7 +40,7 @@ class DynamoDBSetup:
         Returns:
             True if created successfully, False otherwise
         """
-        table_name = settings.users_table_name
+        table_name = infra_settings.users_table_name
         
         try:
             # Check if table already exists
@@ -398,8 +398,8 @@ class DynamoDBSetup:
             'dynamodb_connection': False,
             'required_tables': {},
             'table_count': 0,
-            'environment': settings.environment,
-            'endpoint': settings.dynamodb_endpoint_url or 'AWS Default',
+            'environment': infra_settings.aws_region,
+            'endpoint': infra_settings.dynamodb_endpoint_url or 'AWS Default',
             'password_gsi_optimization': False
         }
         
@@ -410,7 +410,7 @@ class DynamoDBSetup:
             results['table_count'] = len(tables)
             
             # Check required tables
-            required_tables = [settings.users_table_name]
+            required_tables = [infra_settings.users_table_name]
             
             for table_name in required_tables:
                 table_info = self.get_table_info(table_name)
@@ -441,7 +441,7 @@ class DynamoDBSetup:
         print("Resetting all tables...")
         
         # Delete existing tables
-        tables_to_delete = [settings.users_table_name]
+        tables_to_delete = [infra_settings.users_table_name]
         for table_name in tables_to_delete:
             if self.table_exists(table_name):
                 print(f"Deleting table: {table_name}")

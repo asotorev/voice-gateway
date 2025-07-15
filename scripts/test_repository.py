@@ -14,7 +14,7 @@ sys.path.insert(0, str(app_dir))
 
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
 from app.core.models.user import User
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 async def test_repository_operations():
@@ -22,9 +22,9 @@ async def test_repository_operations():
     
     print("Voice Gateway - Repository Integration Test")
     print("=" * 50)
-    print(f"Environment: {settings.environment}")
-    print(f"DynamoDB Endpoint: {settings.dynamodb_endpoint_url}")
-    print(f"Table Name: {settings.users_table_name}")
+    print(f"Environment: {infra_settings.aws_region}")
+    print(f"DynamoDB Endpoint: {infra_settings.dynamodb_endpoint_url}")
+    print(f"Table Name: {infra_settings.users_table_name}")
     print()
     
     repository = DynamoDBUserRepository()

@@ -8,7 +8,7 @@ from app.core.models.user import User
 from app.core.ports.user_repository import UserRepositoryPort
 from app.core.ports.password_service import PasswordServicePort
 from app.core.services.unique_password_service import UniquePasswordService
-from app.config.settings import UNIQUE_PASSWORD_MAX_ATTEMPTS
+from app.core.services.password_service import PasswordService
 
 
 class RegisterUserUseCase:
@@ -63,7 +63,7 @@ class RegisterUserUseCase:
         # Generate unique voice password
         try:
             voice_password = await self.unique_password_service.generate_unique_password(
-                max_attempts=UNIQUE_PASSWORD_MAX_ATTEMPTS
+                max_attempts=PasswordService.MAX_GENERATION_ATTEMPTS
             )
             print("SUCCESS: Used optimized password uniqueness check")
         except Exception as error:

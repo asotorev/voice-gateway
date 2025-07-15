@@ -3,8 +3,9 @@ Health check routes for Voice Gateway.
 Provides application and infrastructure health status.
 """
 from fastapi import APIRouter, HTTPException
-from app.config.aws_config import aws_config
-from app.config.settings import settings
+from app.config.app_settings import app_settings
+from app.infrastructure.config.aws_config import aws_config
+from app.infrastructure.config.infrastructure_settings import infra_settings
 from datetime import datetime
 
 
@@ -40,11 +41,11 @@ async def health_check():
         response = {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
-            "environment": settings.environment,
+            "environment": app_settings.environment,
             "services": {
                 "dynamodb": {
                     "status": health_status["dynamodb"]["status"],
-                    "endpoint": settings.dynamodb_endpoint_url,
+                    "endpoint": infra_settings.dynamodb_endpoint_url,
                     "type": health_status["dynamodb"]["type"]
                 }
             }

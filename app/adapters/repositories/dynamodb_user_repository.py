@@ -8,8 +8,8 @@ from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 from app.core.models.user import User
 from app.core.ports.user_repository import UserRepositoryPort
-from app.config.aws_config import aws_config
-from app.config.settings import settings
+from app.infrastructure.config.aws_config import aws_config
+from app.infrastructure.config.infrastructure_settings import infra_settings
 from decimal import Decimal
 
 
@@ -22,8 +22,8 @@ class DynamoDBUserRepository(UserRepositoryPort):
     """
     
     def __init__(self):
-        self.table_name = settings.users_table_name
-        self.table = aws_config.dynamodb_resource.Table(self.table_name)
+        self.table_name = infra_settings.users_table_name
+        self.table = aws_config.get_table(self.table_name)
     
     async def save(self, user: User) -> User:
         """

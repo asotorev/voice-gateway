@@ -13,14 +13,14 @@ from pathlib import Path
 app_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(app_dir))
 
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 class EndToEndTester:
     """Complete end-to-end testing suite."""
     
     def __init__(self):
-        self.base_url = settings.app_url
+        self.base_url = infra_settings.audio_base_url
         self.test_results = []
     
     def test_health_endpoints(self):
@@ -187,9 +187,9 @@ class EndToEndTester:
         """Run complete end-to-end test suite."""
         print("Voice Gateway - End-to-End Integration Test")
         print("=" * 55)
-        print(f"Environment: {settings.environment}")
+        print(f"Environment: {infra_settings.aws_region}")
         print(f"Application URL: {self.base_url}")
-        print(f"DynamoDB Endpoint: {settings.dynamodb_endpoint_url}")
+        print(f"DynamoDB Endpoint: {infra_settings.dynamodb_endpoint_url}")
         print()
         
         # Run test suites

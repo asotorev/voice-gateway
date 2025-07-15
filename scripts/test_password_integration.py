@@ -15,9 +15,9 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from app.core.usecases.register_user import RegisterUserUseCase
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
-from app.adapters.services.password_service import PasswordService
+from app.core.services.password_service import PasswordService
 from app.core.models.user import User
-from app.config.settings import settings
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 class IntegrationTester:
@@ -25,7 +25,7 @@ class IntegrationTester:
     
     def __init__(self):
         """Initialize integration tester."""
-        self.base_url = settings.app_url
+        self.base_url = infra_settings.audio_base_url
         self.user_repository = DynamoDBUserRepository()
         self.password_service = PasswordService()
         self.use_case = RegisterUserUseCase(self.user_repository, self.password_service)
@@ -266,8 +266,8 @@ async def main():
     """Run integration tests."""
     print("Voice Gateway - Integration Testing")
     print("=" * 50)
-    print(f"Testing against: {settings.app_url}")
-    print(f"Environment: {settings.environment}")
+    print(f"Testing against: {infra_settings.audio_base_url}")
+    print(f"Environment: {infra_settings.aws_region}")
     print()
     
     # Initialize tester

@@ -5,7 +5,6 @@ Main application with DynamoDB integration and complete routing.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import healthcheck, auth
-from app.config.settings import settings
 
 
 def create_app() -> FastAPI:
