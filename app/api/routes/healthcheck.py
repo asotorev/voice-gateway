@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from app.config.app_settings import app_settings
 from app.infrastructure.config.aws_config import aws_config
 from app.infrastructure.config.infrastructure_settings import infra_settings
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 router = APIRouter()
@@ -40,7 +40,7 @@ async def health_check():
         
         response = {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "environment": app_settings.environment,
             "services": {
                 "dynamodb": {

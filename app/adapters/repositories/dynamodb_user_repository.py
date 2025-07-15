@@ -3,7 +3,7 @@ DynamoDB implementation of UserRepositoryPort.
 Provides real persistence using single table design with voice embeddings.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, UTC
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 from app.core.models.user import User
@@ -170,7 +170,7 @@ class DynamoDBUserRepository(UserRepositoryPort):
             'email': user.email,
             'password_hash': user.password_hash,
             'created_at': user.created_at.isoformat(),
-            'updated_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.now(UTC).isoformat(),
             'is_active': True
         }
         
