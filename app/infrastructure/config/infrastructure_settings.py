@@ -24,6 +24,14 @@ class InfrastructureSettings(BaseSettings):
     audio_upload_expiration_minutes: int = 15
     audio_download_expiration_minutes: int = 60
     
+    # Logging configuration context
+    log_level: str = "INFO"
+    log_format: str = "colored"
+    service_name: str = "voice-gateway"
+    
+    # Environment
+    environment: str = "development"
+    
     # Configuration
     model_config = SettingsConfigDict(
         env_file=[".env.local", ".env.development", ".env.staging", ".env.production"],

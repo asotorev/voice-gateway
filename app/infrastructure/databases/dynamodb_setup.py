@@ -2,11 +2,17 @@
 DynamoDB setup and management utilities.
 Provides automated table creation, deletion, and health monitoring with GSI support.
 """
+import sys
 import time
+import argparse
 from typing import List, Dict, Any
 from botocore.exceptions import ClientError
 from app.infrastructure.config.aws_config import aws_config
 from app.infrastructure.config.infrastructure_settings import infra_settings
+from app.infrastructure.logging.log_decorators import (
+    log_infrastructure_operation,
+    op_config
+)
 from .table_schemas import TableSchemas
 
 
@@ -19,26 +25,46 @@ class DynamoDBSetup:
         self.dynamodb = aws_config.dynamodb_resource
         self.schemas = TableSchemas()
         
-    def create_all_tables(self) -> Dict[str, bool]:
+    @log_infrastructure_operation("create_all_tables", **op_config())
+    def create_all_tables(self) -> Dict[str, Any]:
         """
         Create all required tables for the application.
         
         Returns:
-            Dict with table names and creation status
+            Dict with table names and creation status details
         """
         results = {}
         
         # Create Users table (single table design with password GSI)
-        results['users'] = self.create_users_table()
+        users_result = self.create_users_table()
+        results['users'] = {
+            'success': users_result['success'],
+            'table_name': users_result['table_name'],
+            'features': users_result.get('features', []),
+            'gsi_count': users_result.get('gsi_count', 0)
+        }
         
-        return results
+        # Calculate summary metrics
+        success_count = sum(1 for table in results.values() if table['success'])
+        total_count = len(results)
+        
+        return {
+            'results': results,
+            'summary': {
+                'total_tables': total_count,
+                'successful_creations': success_count,
+                'failed_creations': total_count - success_count,
+                'success_rate': round((success_count / total_count) * 100, 1) if total_count > 0 else 0
+            }
+        }
     
-    def create_users_table(self) -> bool:
+    @log_infrastructure_operation("create_users_table", **op_config())
+    def create_users_table(self) -> Dict[str, Any]:
         """
         Create the users table with optimized schema including password hash GSI.
         
         Returns:
-            True if created successfully, False otherwise
+            Dict with creation result and table details
         """
         table_name = infra_settings.users_table_name
         
@@ -52,37 +78,55 @@ class DynamoDBSetup:
                 has_password_gsi = self.has_password_hash_gsi(existing_table)
                 
                 if has_password_gsi:
-                    print(f"Table '{table_name}' already exists with password hash GSI")
-                    return True
+                    return {
+                        'success': True,
+                        'table_name': table_name,
+                        'action': 'skipped',
+                        'reason': 'table_exists_with_gsi',
+                        'features': ['password_gsi', 'email_gsi', 'encryption'],
+                        'gsi_count': len(existing_table.global_secondary_indexes or [])
+                    }
                 else:
-                    print(f"Table '{table_name}' exists but missing password hash GSI")
-                    print("Consider running GSI migration or recreating table")
-                    return False
+                    return {
+                        'success': False,
+                        'table_name': table_name,
+                        'action': 'failed',
+                        'reason': 'missing_password_gsi',
+                        'recommendation': 'run_gsi_migration_or_recreate_table'
+                    }
             
             # Create table using schema with GSI
             schema = self.schemas.users_table_schema(table_name)
             table = self.dynamodb.create_table(**schema)
             
             # Wait for table and all GSIs to be created
-            print(f"Creating table '{table_name}' with password hash GSI...")
             self.wait_for_table_creation(table)
             
-            print(f"Table '{table_name}' created successfully")
-            print(f"  - Single table design with embedded voice embeddings")
-            print(f"  - Email GSI for flexible user lookup")
-            print(f"  - Password hash GSI for immediate uniqueness validation")
-            print(f"  - Encryption at rest enabled")
-            return True
+            return {
+                'success': True,
+                'table_name': table_name,
+                'action': 'created',
+                'features': [
+                    'single_table_design',
+                    'embedded_voice_embeddings',
+                    'email_gsi',
+                    'password_hash_gsi',
+                    'encryption_at_rest'
+                ],
+                'gsi_count': len(table.global_secondary_indexes or []),
+                'design_type': 'single_table'
+            }
             
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = e.response['Error']['Message']
-            print(f"Failed to create table '{table_name}': {error_code} - {error_message}")
-            return False
+            
+            raise RuntimeError(f"Failed to create table '{table_name}': {error_code} - {error_message}")
+            
         except Exception as e:
-            print(f"Unexpected error creating table '{table_name}': {str(e)}")
-            return False
+            raise RuntimeError(f"Unexpected error creating table '{table_name}': {str(e)}")
     
+    @log_infrastructure_operation("check_password_gsi", **op_config())
     def has_password_hash_gsi(self, table) -> bool:
         """
         Check if table has the password hash GSI.
@@ -102,7 +146,8 @@ class DynamoDBSetup:
         
         return False
     
-    def add_password_hash_gsi(self, table_name: str) -> bool:
+    @log_infrastructure_operation("add_password_gsi", **op_config("CRITICAL"))
+    def add_password_hash_gsi(self, table_name: str) -> Dict[str, Any]:
         """
         Add password hash GSI to existing table (migration utility).
         
@@ -112,20 +157,30 @@ class DynamoDBSetup:
             table_name: Name of the table to modify
             
         Returns:
-            True if GSI was added successfully, False otherwise
+            Dict with migration results
         """
         try:
             if not self.table_exists(table_name):
-                print(f"Table '{table_name}' does not exist")
-                return False
+                raise ValueError(f"Table '{table_name}' does not exist")
             
             table = self.dynamodb.Table(table_name)
             table.load()
             
             # Check if GSI already exists
             if self.has_password_hash_gsi(table):
-                print(f"Password hash GSI already exists on table '{table_name}'")
-                return True
+                return {
+                    'success': True,
+                    'table_name': table_name,
+                    'action': 'skipped',
+                    'reason': 'gsi_already_exists',
+                    'gsi_name': 'password-hash-index'
+                }
+            
+            # Get table metrics before migration
+            pre_migration_metrics = {
+                'item_count': getattr(table, 'item_count', 0),
+                'table_size_bytes': getattr(table, 'table_size_bytes', 0)
+            }
             
             # Add GSI using update_table
             client = aws_config.dynamodb_client
@@ -156,25 +211,31 @@ class DynamoDBSetup:
                 ]
             )
             
-            print(f"Adding password hash GSI to table '{table_name}'...")
-            print("WARNING: This operation may take several minutes for large tables")
-            
             # Wait for GSI to become active
             self.wait_for_gsi_creation(table_name, 'password-hash-index')
             
-            print(f"Password hash GSI added successfully to table '{table_name}'")
-            return True
+            return {
+                'success': True,
+                'table_name': table_name,
+                'action': 'gsi_added',
+                'gsi_name': 'password-hash-index',
+                'projection_type': 'KEYS_ONLY',
+                'pre_migration_metrics': pre_migration_metrics,
+                'aws_request_id': response.get('ResponseMetadata', {}).get('RequestId'),
+                'performance_impact': 'O(n) to O(1) password uniqueness validation'
+            }
             
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = e.response['Error']['Message']
-            print(f"Failed to add GSI to table '{table_name}': {error_code} - {error_message}")
-            return False
+            
+            raise RuntimeError(f"Failed to add GSI to table '{table_name}': {error_code} - {error_message}")
+            
         except Exception as e:
-            print(f"Unexpected error adding GSI to table '{table_name}': {str(e)}")
-            return False
+            raise RuntimeError(f"Unexpected error adding GSI to table '{table_name}': {str(e)}")
     
-    def wait_for_gsi_creation(self, table_name: str, index_name: str, max_wait_time: int = 600) -> None:
+    @log_infrastructure_operation("wait_gsi_creation", **op_config())
+    def wait_for_gsi_creation(self, table_name: str, index_name: str, max_wait_time: int = 600) -> Dict[str, Any]:
         """
         Wait for a GSI to be created and become active.
         
@@ -182,6 +243,9 @@ class DynamoDBSetup:
             table_name: Name of the table
             index_name: Name of the GSI
             max_wait_time: Maximum time to wait in seconds
+            
+        Returns:
+            Dict with waiting results
         """
         start_time = time.time()
         client = aws_config.dynamodb_client
@@ -190,6 +254,7 @@ class DynamoDBSetup:
             try:
                 response = client.describe_table(TableName=table_name)
                 table_desc = response['Table']
+                elapsed_time = time.time() - start_time
                 
                 if 'GlobalSecondaryIndexes' in table_desc:
                     for gsi in table_desc['GlobalSecondaryIndexes']:
@@ -197,21 +262,27 @@ class DynamoDBSetup:
                             status = gsi['IndexStatus']
                             
                             if status == 'ACTIVE':
-                                print(f"GSI '{index_name}' is now active")
-                                return
+                                return {
+                                    'success': True,
+                                    'index_name': index_name,
+                                    'final_status': status,
+                                    'total_wait_time_seconds': round(elapsed_time, 2)
+                                }
                             elif status in ['CREATING', 'UPDATING']:
-                                print(f"GSI '{index_name}' status: {status}")
+                                # Continue waiting
+                                pass
                             else:
-                                raise Exception(f"GSI creation failed with status: {status}")
+                                raise RuntimeError(f"GSI creation failed with status: {status}")
                 
                 time.sleep(10)  # Check every 10 seconds for GSI
                 
             except ClientError as e:
-                print(f"Error checking GSI status: {e}")
+                # Temporary error, continue waiting
                 time.sleep(10)
         
         raise TimeoutError(f"GSI creation timed out after {max_wait_time} seconds")
     
+    @log_infrastructure_operation("table_exists_check", **op_config())
     def table_exists(self, table_name: str) -> bool:
         """
         Check if a table exists in DynamoDB.
@@ -231,34 +302,45 @@ class DynamoDBSetup:
                 return False
             raise  # Re-raise other errors
     
-    def wait_for_table_creation(self, table, max_wait_time: int = 600) -> None:
+    @log_infrastructure_operation("wait_table_creation", **op_config())
+    def wait_for_table_creation(self, table, max_wait_time: int = 600) -> Dict[str, Any]:
         """
         Wait for a table to be created and become active, including all GSIs.
         
         Args:
             table: DynamoDB table resource
             max_wait_time: Maximum time to wait in seconds
+            
+        Returns:
+            Dict with waiting results
         """
         start_time = time.time()
         
         while time.time() - start_time < max_wait_time:
             try:
                 table.reload()
+                elapsed_time = time.time() - start_time
+                
                 if table.table_status == 'ACTIVE':
                     # Also wait for all GSIs to be active
                     if self.are_indexes_active(table):
-                        return
-                    
-                gsi_status = self.get_gsi_status_summary(table)
-                print(f"Waiting for table and indexes to become active... (Table: {table.table_status}, GSIs: {gsi_status})")
+                        return {
+                            'success': True,
+                            'table_name': table.name,
+                            'table_status': table.table_status,
+                            'total_wait_time_seconds': round(elapsed_time, 2),
+                            'gsi_status': self.get_gsi_status_summary(table)
+                        }
+                
                 time.sleep(5)
                 
             except ClientError:
-                print("Table still being created...")
+                # Table still being created
                 time.sleep(5)
         
         raise TimeoutError(f"Table creation timed out after {max_wait_time} seconds")
     
+    @log_infrastructure_operation("get_gsi_status", **op_config())
     def get_gsi_status_summary(self, table) -> str:
         """
         Get a summary of all GSI statuses.
@@ -280,6 +362,7 @@ class DynamoDBSetup:
         
         return ", ".join(statuses)
     
+    @log_infrastructure_operation("check_indexes_active", **op_config())
     def are_indexes_active(self, table) -> bool:
         """
         Check if all Global Secondary Indexes are active.
@@ -299,7 +382,8 @@ class DynamoDBSetup:
         
         return True
     
-    def delete_table(self, table_name: str) -> bool:
+    @log_infrastructure_operation("delete_table", **op_config("CRITICAL"))
+    def delete_table(self, table_name: str) -> Dict[str, Any]:
         """
         Delete a table (useful for testing and cleanup).
         
@@ -307,25 +391,42 @@ class DynamoDBSetup:
             table_name: Name of the table to delete
             
         Returns:
-            True if deleted successfully, False otherwise
+            Dict with deletion results
         """
         try:
             if not self.table_exists(table_name):
-                print(f"Table '{table_name}' does not exist")
-                return True
+                return {
+                    'success': True,
+                    'table_name': table_name,
+                    'action': 'skipped',
+                    'reason': 'table_does_not_exist'
+                }
+            
+            # Get table info before deletion for logging
+            table_info = self.get_table_info(table_name)
             
             table = self.dynamodb.Table(table_name)
             table.delete()
             
-            print(f"Table '{table_name}' deleted successfully")
-            return True
+            return {
+                'success': True,
+                'table_name': table_name,
+                'action': 'deleted',
+                'pre_deletion_info': {
+                    'item_count': table_info.get('item_count', 0),
+                    'table_size_bytes': table_info.get('table_size_bytes', 0),
+                    'gsi_count': table_info.get('gsi_count', 0)
+                },
+                'data_recovery': 'not_possible'
+            }
             
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = e.response['Error']['Message']
-            print(f"Failed to delete table '{table_name}': {error_code} - {error_message}")
-            return False
+            
+            raise RuntimeError(f"Failed to delete table '{table_name}': {error_code} - {error_message}")
     
+    @log_infrastructure_operation("list_tables", **op_config())
     def list_tables(self) -> List[str]:
         """
         List all tables in the DynamoDB instance.
@@ -338,9 +439,9 @@ class DynamoDBSetup:
             table_names = [table.name for table in tables]
             return table_names
         except Exception as e:
-            print(f"Error listing tables: {str(e)}")
-            return []
+            raise RuntimeError(f"Error listing tables: {str(e)}")
     
+    @log_infrastructure_operation("get_table_info", **op_config())
     def get_table_info(self, table_name: str) -> Dict[str, Any]:
         """
         Get detailed information about a table including GSI info.
@@ -353,7 +454,7 @@ class DynamoDBSetup:
         """
         try:
             if not self.table_exists(table_name):
-                return {'exists': False}
+                return {'exists': False, 'table_name': table_name}
             
             table = self.dynamodb.Table(table_name)
             table.load()
@@ -370,8 +471,9 @@ class DynamoDBSetup:
                         'projection': gsi['Projection']['ProjectionType']
                     })
             
-            info = {
+            return {
                 'exists': True,
+                'table_name': table_name,
                 'status': table.table_status,
                 'item_count': table.item_count,
                 'table_size_bytes': table.table_size_bytes,
@@ -382,11 +484,10 @@ class DynamoDBSetup:
                 'gsi_details': gsi_info
             }
             
-            return info
-            
         except Exception as e:
-            return {'exists': False, 'error': str(e)}
+            raise RuntimeError(f"Error getting table info for '{table_name}': {str(e)}")
     
+    @log_infrastructure_operation("health_check", **op_config())
     def health_check(self) -> Dict[str, Any]:
         """
         Perform comprehensive health check on DynamoDB setup including GSI status.
@@ -426,45 +527,81 @@ class DynamoDBSetup:
                 if table_info.get('has_password_gsi', False):
                     results['password_gsi_optimization'] = True
             
+            return results
+            
         except Exception as e:
-            results['error'] = str(e)
-        
-        return results
+            raise RuntimeError(f"Health check failed: {str(e)}")
     
-    def reset_all_tables(self) -> bool:
+    @log_infrastructure_operation("reset_all_tables", **op_config("CRITICAL"))
+    def reset_all_tables(self) -> Dict[str, Any]:
         """
         Delete and recreate all tables (useful for development).
         
         Returns:
-            True if reset was successful
+            Dict with reset operation results
         """
-        print("Resetting all tables...")
-        
         # Delete existing tables
         tables_to_delete = [infra_settings.users_table_name]
+        deletion_results = []
+        
         for table_name in tables_to_delete:
             if self.table_exists(table_name):
-                print(f"Deleting table: {table_name}")
-                self.delete_table(table_name)
+                deletion_result = self.delete_table(table_name)
+                deletion_results.append(deletion_result)
                 
                 # Wait for deletion to complete
                 while self.table_exists(table_name):
-                    print("Waiting for table deletion...")
                     time.sleep(2)
         
         # Recreate tables
-        print("Recreating tables with password hash GSI...")
-        results = self.create_all_tables()
+        creation_results = self.create_all_tables()
         
-        success = all(results.values())
-        if success:
-            print("Table reset completed successfully")
-            print("Password hash GSI optimization is now available")
+        success = creation_results['summary']['success_rate'] == 100.0
+        
+        return {
+            'reset_successful': success,
+            'deletion_results': deletion_results,
+            'creation_results': creation_results,
+            'password_gsi_optimization': True,
+            'total_tables_processed': len(tables_to_delete)
+        }
+
+
+def main():
+    """Entry point for CLI operations on DynamoDB setup (class-based, setup_database style)."""
+    parser = argparse.ArgumentParser(description="DynamoDB Setup Utility")
+    parser.add_argument("--health", action="store_true", help="Run health check")
+    parser.add_argument("--create", action="store_true", help="Create all tables")
+    parser.add_argument("--delete", metavar="TABLE", help="Delete a specific table by name")
+    parser.add_argument("--list", action="store_true", help="List all tables")
+    parser.add_argument("--info", metavar="TABLE", help="Get info for a specific table")
+    args = parser.parse_args()
+
+    setup = DynamoDBSetup()
+    try:
+        if args.health:
+            result = setup.health_check()
+            success = result.get("dynamodb_connection", False)
+        elif args.create:
+            result = setup.create_all_tables()
+            success = result["summary"]["success_rate"] == 100.0
+        elif args.delete:
+            result = setup.delete_table(args.delete)
+            success = result.get("success", False)
+        elif args.list:
+            result = setup.list_tables()
+            success = isinstance(result, list)
+        elif args.info:
+            result = setup.get_table_info(args.info)
+            success = result.get("exists", False)
         else:
-            print("Table reset completed with errors")
-            
-        return success
+            parser.print_help()
+            return 1
+        return 0 if success else 1
+    except KeyboardInterrupt:
+        return 1
+    except Exception:
+        return 1
 
-
-# Global setup instance
-dynamodb_setup = DynamoDBSetup()
+if __name__ == "__main__":
+    sys.exit(main())

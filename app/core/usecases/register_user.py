@@ -65,11 +65,8 @@ class RegisterUserUseCase:
             voice_password = await self.unique_password_service.generate_unique_password(
                 max_attempts=PasswordService.MAX_GENERATION_ATTEMPTS
             )
-            print("SUCCESS: Used optimized password uniqueness check")
         except Exception as error:
-            print(f"WARNING: Password uniqueness validation failed: {error}")
             voice_password = self.password_service.generate_password()
-            print("WARNING: Generated password without uniqueness validation")
         
         # Create password hash for storage
         password_hash = self.password_service.hash_password(voice_password)

@@ -5,97 +5,109 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
+import app.infrastructure.logging.log_config
+from app.infrastructure.logging.log_decorators import log_infrastructure_operation, op_config
 from app.infrastructure.databases.dynamodb_setup import dynamodb_setup
 from app.infrastructure.config.infrastructure_settings import infra_settings
 
+class MigratePasswordGSIScript:
+    """Script operations for managing password hash GSI on users table."""
+
+    @log_infrastructure_operation("migrate_password_gsi", **op_config())
+    def main(self):
+        table_name = infra_settings.users_table_name
+        table_info = dynamodb_setup.get_table_info(table_name)
+        if not table_info['exists']:
+            return {
+                "success": False,
+                "error": f"Table '{table_name}' does not exist",
+                "hint": "Run setup_database.py first"
+            }
+        if table_info['has_password_gsi']:
+            return {
+                "success": True,
+                "info": "Password hash GSI already exists"
+            }
+        result = dynamodb_setup.add_password_hash_gsi(table_name)
+        if result and result.get("success"):
+            return {
+                "success": True,
+                "info": "GSI added successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Failed to add GSI"
+            }
+
+    @log_infrastructure_operation("check_password_gsi_status", **op_config())
+    def check_status(self):
+        table_name = infra_settings.users_table_name
+        table_info = dynamodb_setup.get_table_info(table_name)
+        if not table_info['exists']:
+            return {
+                "success": False,
+                "error": "Table does not exist"
+            }
+        if table_info['has_password_gsi']:
+            return {
+                "success": True,
+                "info": "Password hash GSI is active"
+            }
+        else:
+            return {
+                "success": False,
+                "warning": "Password hash GSI not found"
+            }
+
+    @log_infrastructure_operation("rollback_password_gsi", **op_config())
+    def rollback(self):
+        confirm = input("WARNING: This will remove the password hash GSI. Continue? (y/N): ").strip().lower()
+        if confirm != 'y':
+            return {
+                "success": False,
+                "info": "Cancelled"
+            }
+        table_name = infra_settings.users_table_name
+        client = dynamodb_setup.dynamodb.meta.client
+        try:
+            client.update_table(
+                TableName=table_name,
+                GlobalSecondaryIndexUpdates=[
+                    {'Delete': {'IndexName': 'password-hash-index'}}
+                ]
+            )
+            return {
+                "success": True,
+                "info": "GSI deletion started"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed: {e}"
+            }
 
 def main():
-    """Add password hash GSI to existing users table."""
-    table_name = infra_settings.users_table_name
-    
-    # Check if table exists
-    table_info = dynamodb_setup.get_table_info(table_name)
-    if not table_info['exists']:
-        print(f"Table '{table_name}' does not exist")
-        print("Run setup_database.py first")
-        return False
-    
-    # Check if GSI already exists
-    if table_info['has_password_gsi']:
-        print("Password hash GSI already exists")
-        return True
-    
-    print(f"Adding password hash GSI to {table_name}...")
-    print("This may take a few minutes for large tables")
-    
-    # Add the GSI
-    success = dynamodb_setup.add_password_hash_gsi(table_name)
-    
-    if success:
-        print("GSI added successfully")
-    else:
-        print("Failed to add GSI")
-    
-    return success
-
-
-def check_status():
-    """Check if password GSI exists."""
-    table_name = infra_settings.users_table_name
-    table_info = dynamodb_setup.get_table_info(table_name)
-    
-    if not table_info['exists']:
-        print("Table does not exist")
-        return False
-    
-    if table_info['has_password_gsi']:
-        print("Password hash GSI is active")
-        return True
-    else:
-        print("Password hash GSI not found")
-        return False
-
-
-def rollback():
-    """Remove password GSI (for testing)."""
-    print("WARNING: This will remove the password hash GSI")
-    confirm = input("Continue? (y/N): ").strip().lower()
-    if confirm != 'y':
-        print("Cancelled")
-        return False
-    
-    table_name = infra_settings.users_table_name
-    client = dynamodb_setup.dynamodb.meta.client
-    
-    try:
-        client.update_table(
-            TableName=table_name,
-            GlobalSecondaryIndexUpdates=[
-                {'Delete': {'IndexName': 'password-hash-index'}}
-            ]
-        )
-        print("GSI deletion started")
-        return True
-    except Exception as e:
-        print(f"Failed: {e}")
-        return False
-
-
-if __name__ == "__main__":
+    script = MigratePasswordGSIScript()
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
-        
         if command == 'status':
-            success = check_status()
+            result = script.check_status()
         elif command == 'rollback':
-            success = rollback()
+            result = script.rollback()
         else:
-            print("Usage:")
-            print("  python migrate_password_gsi.py          # Add GSI")
-            print("  python migrate_password_gsi.py status   # Check status")
-            print("  python migrate_password_gsi.py rollback # Remove GSI")
-            success = False
+            result = {
+                "success": False,
+                "error": "Usage:",
+                "usage": [
+                    "python migrate_password_gsi.py          # Add GSI",
+                    "python migrate_password_gsi.py status   # Check status",
+                    "python migrate_password_gsi.py rollback # Remove GSI"
+                ]
+            }
     else:
-        success = main()
-    
-    sys.exit(0 if success else 1) 
+        result = script.main()
+    sys.exit(0 if result.get("success") else 1)
+
+if __name__ == "__main__":
+    main() 
