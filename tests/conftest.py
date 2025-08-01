@@ -2,7 +2,15 @@
 Shared test configuration and fixtures for Voice Gateway tests.
 """
 import pytest
+import sys
+from pathlib import Path
 from unittest.mock import Mock
+
+# Setup Python path once for all tests
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Import after path setup
 from app.core.ports.user_repository import UserRepositoryPort
 from app.core.ports.password_service import PasswordServicePort
 from app.core.models.user import User
@@ -11,6 +19,10 @@ from app.core.services.password_service import PasswordService
 from app.core.services.unique_password_service import UniquePasswordService
 from app.core.usecases.register_user import RegisterUserUseCase
 
+# Health check infrastructure
+from app.infrastructure.services.health_checks import health_check_service
+
+# Mock Fixtures
 @pytest.fixture
 def mock_user_repository() -> Mock:
     mock_repo = Mock(spec=UserRepositoryPort)
@@ -28,6 +40,7 @@ def mock_password_service() -> Mock:
     mock_service.validate_password_format.return_value = True
     return mock_service
 
+# Sample Data Fixtures
 @pytest.fixture
 def sample_user() -> User:
     return User.create(
@@ -48,24 +61,26 @@ def sample_users_list() -> list[User]:
     ]
 
 @pytest.fixture
-def test_audio_path() -> str:
-    return "tests/fixtures/audio_samples/test_sample.wav"
-
-@pytest.fixture
 def test_dictionary_data() -> dict:
     return {
         "version": "1.0",
         "language": "es-MX",
         "total_words": 10,
         "words": [
-            "casa", "verde", "mesa", "libro", "agua",
-            "fuego", "tierra", "cielo", "mar", "sol"
+            "academia", "actividad", "alimento", "biblioteca", "computadora",
+            "desierto", "escritorio", "hospital", "laboratorio", "medicina"
         ],
         "entropy_bits": 6.64,
-        "total_combinations": 100
+        "total_combinations": 90
     }
 
-# === Global fixtures for real services/repos ===
+# Health Check Fixtures
+@pytest.fixture
+def health_service():
+    """Fixture to provide health check service."""
+    return health_check_service
+
+# Real Services/Repos (Module Scope)
 @pytest.fixture(scope="module")
 def user_repository():
     return DynamoDBUserRepository()
@@ -80,4 +95,4 @@ def unique_password_service(password_service, user_repository):
 
 @pytest.fixture(scope="module")
 def register_user_use_case(user_repository, password_service):
-    return RegisterUserUseCase(user_repository, password_service) 
+    return RegisterUserUseCase(user_repository, password_service)

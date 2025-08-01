@@ -4,9 +4,9 @@ Provides application and infrastructure health status.
 """
 from fastapi import APIRouter, HTTPException
 from app.config.app_settings import app_settings
-from app.infrastructure.config.aws_config import aws_config
 from app.infrastructure.config.infrastructure_settings import infra_settings
 from datetime import datetime, UTC
+from app.infrastructure.services.health_checks import health_check_service
 
 
 router = APIRouter()
@@ -35,27 +35,27 @@ async def health_check():
         HTTPException: 503 if critical services are unavailable
     """
     try:
-        # Check DynamoDB connectivity
-        health_status = aws_config.health_check()
+        # Check all infrastructure services
+        health_status = health_check_service.check_all_services()
         
         response = {
             "status": "healthy",
             "timestamp": datetime.now(UTC).isoformat(),
             "environment": app_settings.environment,
-            "services": {
-                "dynamodb": {
-                    "status": health_status["dynamodb"]["status"],
-                    "endpoint": infra_settings.dynamodb_endpoint_url,
-                    "type": health_status["dynamodb"]["type"]
-                }
-            }
+            "services": health_status
         }
         
         # Check if any critical service is down
-        if health_status["dynamodb"]["status"] != "healthy":
+        critical_services = ["dynamodb"]
+        unhealthy_services = [
+            service for service in critical_services
+            if health_status.get(service, {}).get("status") != "healthy"
+        ]
+        
+        if unhealthy_services:
             raise HTTPException(
                 status_code=503,
-                detail="DynamoDB service unavailable"
+                detail=f"Services unavailable: {', '.join(unhealthy_services)}"
             )
         
         return response
