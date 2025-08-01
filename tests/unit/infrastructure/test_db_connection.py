@@ -3,18 +3,11 @@
 Verifies DynamoDB Local connectivity and table operations.
 Connects to local DynamoDB instance and validates configuration.
 """
-import sys
-import os
-from pathlib import Path
-
-# Add the app directory to Python path
-app_dir = Path(__file__).parent.parent
-sys.path.append(str(app_dir))
-
 import pytest
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 from app.infrastructure.config.infrastructure_settings import infra_settings
+
 
 @pytest.mark.asyncio
 @pytest.mark.unit

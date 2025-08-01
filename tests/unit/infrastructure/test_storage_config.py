@@ -3,55 +3,18 @@
 S3 Configuration Test Suite for Voice Gateway.
 Validates S3 settings, URL generation, and configuration properties.
 """
-import sys
-import os
-from pathlib import Path
 import pytest
 
-# Add the app directory to Python path
-sys.path.append(str(Path(__file__).parent.parent))
-
 from app.core.services.audio_constraints import AudioConstraints
-
-
-@pytest.fixture(scope="module")
-def test_settings():
-    """Setup test environment and return fresh settings instance."""
-    test_env = {
-        'ENVIRONMENT': 'development',
-        'AWS_REGION': 'us-east-1',
-        'USERS_TABLE_NAME': 'voice-gateway-users-local',
-        'S3_BUCKET_NAME': 'voice-gateway-audio-dev',
-        'AUDIO_BASE_URL': 's3://voice-gateway-audio-dev/',
-        'S3_ENDPOINT_URL': 'http://localhost:9000',  # MinIO default
-        'S3_USE_SSL': 'false',
-        'AUDIO_UPLOAD_EXPIRATION_MINUTES': '15',
-        'AUDIO_DOWNLOAD_EXPIRATION_MINUTES': '60',
-        'MAX_AUDIO_FILE_SIZE_MB': '10',
-        'ALLOWED_AUDIO_FORMATS': 'wav,mp3,m4a'
-    }
-    # Save original environment
-    original_env = {}
-    for key, value in test_env.items():
-        original_env[key] = os.environ.get(key)
-        os.environ[key] = value
-    from app.infrastructure.config.infrastructure_settings import InfrastructureSettings
-    settings = InfrastructureSettings()
-    yield settings
-    for key, original_value in original_env.items():
-        if original_value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = original_value
 
 
 @pytest.mark.unit
 def test_settings_loading(test_settings):
     """Test that infrastructure settings load correctly with S3 configuration."""
-    assert test_settings.environment == "development"
+    assert test_settings.environment == "test"
     assert test_settings.aws_region == "us-east-1"
-    assert test_settings.s3_bucket_name == "voice-gateway-audio-dev"
-    assert test_settings.audio_base_url == "s3://voice-gateway-audio-dev/"
+    assert test_settings.s3_bucket_name == "test-bucket"
+    assert test_settings.audio_base_url == "s3://test-bucket/"
 
 
 @pytest.mark.unit
@@ -89,9 +52,9 @@ def test_s3_config_generation(test_settings):
 def test_audio_url_generation(test_settings):
     """Test audio URL generation from relative paths."""
     test_cases = [
-        ("user123/sample1.wav", "s3://voice-gateway-audio-dev/user123/sample1.wav"),
-        ("user456/sample2.mp3", "s3://voice-gateway-audio-dev/user456/sample2.mp3"),
-        ("/user789/sample3.m4a", "s3://voice-gateway-audio-dev/user789/sample3.m4a"),  # Leading slash
+        ("user123/sample1.wav", "s3://test-bucket/user123/sample1.wav"),
+        ("user456/sample2.mp3", "s3://test-bucket/user456/sample2.mp3"),
+        ("/user789/sample3.m4a", "s3://test-bucket/user789/sample3.m4a"),  # Leading slash
     ]
     
     for input_path, expected_url in test_cases:
@@ -137,7 +100,7 @@ def test_file_size_conversion(test_settings):
 def test_complete_s3_workflow(test_settings):
     """Integration test simulating complete S3 configuration workflow."""
     # 1. Verify settings are loaded
-    assert test_settings.environment == "development"
+    assert test_settings.environment == "test"
     
     # 2. Generate S3 config
     s3_config = test_settings.get_s3_config()
@@ -151,12 +114,3 @@ def test_complete_s3_workflow(test_settings):
     # 4. Validate format is allowed
     file_extension = test_path.split('.')[-1]
     assert file_extension in AudioConstraints.ALLOWED_AUDIO_FORMATS
-
-
-if __name__ == "__main__":
-    # Run tests if executed directly
-    import subprocess
-    result = subprocess.run([
-        sys.executable, "-m", "pytest", __file__, "-v", "--tb=short"
-    ], cwd=Path(__file__).parent.parent)
-    sys.exit(result.returncode)

@@ -76,6 +76,22 @@ class StorageServicePort(ABC):
         """
         pass
 
+    @abstractmethod
+    async def delete_file(self, file_path: str) -> bool:
+        """
+        Delete a file from storage.
+        
+        Args:
+            file_path: Relative path to the file to delete
+        
+        Returns:
+            bool: True if file was deleted, False if not found
+        
+        Raises:
+            StorageError: If deletion fails
+        """
+        pass
+
 
 class StorageError(Exception):
     """Exception raised for storage operation errors."""

@@ -46,9 +46,9 @@ async def health_check():
         }
         
         # Check if any critical service is down
-        critical_services = ["dynamodb"]
+        critical_services = ["dynamodb", "s3"]
         unhealthy_services = [
-            service for service in critical_services
+            service for service in critical_services 
             if health_status.get(service, {}).get("status") != "healthy"
         ]
         

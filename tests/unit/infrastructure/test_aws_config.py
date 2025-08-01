@@ -3,14 +3,7 @@
 Test AWS configuration abstraction layer.
 Assumes prerequisites are met (run test_db_connection.py first).
 """
-import sys
-from pathlib import Path
 import pytest
-
-# Add the app directory to Python path
-app_dir = Path(__file__).parent.parent
-sys.path.append(str(app_dir))
-
 from app.infrastructure.config.aws_config import aws_config
 from app.infrastructure.config.infrastructure_settings import infra_settings
 
@@ -26,14 +19,21 @@ def test_aws_config_layer():
 
 
 @pytest.mark.unit
-def test_health_check():
+def test_aws_config_connectivity():
+    """Test that AWS config can establish basic connectivity."""
     try:
-        health = aws_config.health_check()
-        dynamodb_status = health.get('dynamodb', {})
-        status = dynamodb_status.get('status', 'unknown')
-        assert status == 'healthy', f"Health check failed: {dynamodb_status.get('error', 'Unknown error')}"
+        # Test DynamoDB connectivity
+        dynamodb = aws_config.dynamodb_resource
+        tables = list(dynamodb.tables.all())
+        assert isinstance(tables, list), "Should be able to list tables"
+        
+        # Test S3 connectivity
+        s3 = aws_config.s3_client
+        buckets = s3.list_buckets()
+        assert 'Buckets' in buckets, "Should be able to list buckets"
+        
     except Exception as e:
-        pytest.fail(f"Health check test failed: {str(e)}")
+        pytest.fail(f"AWS config connectivity test failed: {str(e)}")
 
 
 @pytest.mark.unit
