@@ -5,7 +5,7 @@ Main application with DynamoDB integration and complete routing.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import healthcheck, auth
+from app.api.routes import healthcheck_router, auth_router, audio_router
 
 
 @asynccontextmanager
@@ -36,13 +36,14 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Voice Gateway API",
         version="0.1.0",
-        description="Voice authentication system with DynamoDB persistence",
+        description="Voice authentication system with DynamoDB persistence and S3 storage",
         lifespan=lifespan
     )
 
     # Include route modules
-    app.include_router(healthcheck.router, prefix="/api")
-    app.include_router(auth.router, prefix="/api")
+    app.include_router(healthcheck_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
+    app.include_router(audio_router, prefix="/api")
     
     return app
 

@@ -6,7 +6,7 @@ Tests with real S3/MinIO infrastructure for end-to-end validation.
 import pytest
 import os
 import requests
-from app.core.ports.storage_service import StorageError
+from app.core.ports.audio_storage_port import AudioStorageError
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +23,7 @@ async def test_service_init(infrastructure_helpers):
     service = infrastructure_helpers.create_real_service()
     
     # Test service info
-    info = service.get_service_info()
+    info = service.get_audio_service_info()
     assert info['service_type'] == 's3'
     assert info['bucket_name']  # Should not be empty
     assert info['region']  # Should not be empty
@@ -50,7 +50,7 @@ async def test_upload_download_workflow(infrastructure_helpers, test_files):
     test_content = infrastructure_helpers.create_test_audio_content(1024)
     
     # Step 1: Generate upload URL
-    upload_result = await service.generate_upload_url(
+    upload_result = await service.generate_audio_upload_url(
         file_path=file_path,
         content_type="audio/wav",
         expiration_minutes=5
@@ -78,11 +78,11 @@ async def test_upload_download_workflow(infrastructure_helpers, test_files):
     assert response.status_code in [200, 204], f"Upload failed with status {response.status_code}"
     
     # Step 3: Verify file exists
-    exists = await service.file_exists(file_path)
+    exists = await service.audio_file_exists(file_path)
     assert exists is True
     
     # Step 4: Generate download URL
-    download_url = await service.generate_download_url(file_path, expiration_minutes=5)
+    download_url = await service.generate_audio_download_url(file_path, expiration_minutes=5)
     assert download_url.startswith('http')
     
     # Step 5: Download file
@@ -101,16 +101,16 @@ async def test_error_scenarios(infrastructure_helpers):
     service = infrastructure_helpers.create_real_service()
     
     # Test non-existent file download
-    with pytest.raises(StorageError, match="File does not exist"):
-        await service.generate_download_url("nonexistent/file.wav")
+    with pytest.raises(AudioStorageError, match="Audio file does not exist"):
+        await service.generate_audio_download_url("nonexistent/file.wav")
     
     # Test invalid file path
-    with pytest.raises(StorageError, match="File path cannot be empty"):
-        await service.generate_upload_url("")
+    with pytest.raises(AudioStorageError, match="File path cannot be empty"):
+        await service.generate_audio_upload_url("")
     
     # Test invalid expiration
-    with pytest.raises(StorageError, match="Invalid expiration"):
-        await service.generate_upload_url("test.wav", expiration_minutes=0)
+    with pytest.raises(AudioStorageError, match="Invalid expiration"):
+        await service.generate_audio_upload_url("test.wav", expiration_minutes=0)
 
 
 @pytest.mark.integration
@@ -130,8 +130,8 @@ async def test_path_validation(infrastructure_helpers):
         # This would be tested through the service's internal path cleaning
         # For now, we test that the service handles paths correctly
         try:
-            await service.generate_upload_url(input_path, content_type="audio/wav")
+            await service.generate_audio_upload_url(input_path, content_type="audio/wav")
             # If no error, path was handled correctly
-        except StorageError as e:
+        except AudioStorageError as e:
             # Expected for invalid paths, but should not be path-related errors
             assert "File path cannot be empty" not in str(e)

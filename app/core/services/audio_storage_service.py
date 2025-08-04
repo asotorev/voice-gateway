@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from botocore.exceptions import ClientError, NoCredentialsError
-from app.core.ports.storage_service import StorageServicePort, StorageError
+from app.core.ports.audio_storage_port import AudioStorageServicePort, AudioStorageError
 from app.core.services.audio_constraints import AudioConstraints
 from app.infrastructure.config.aws_config import aws_config
 from app.infrastructure.config.infrastructure_settings import infra_settings
@@ -14,9 +14,9 @@ from app.infrastructure.config.infrastructure_settings import infra_settings
 logger = logging.getLogger(__name__)
 
 
-class AudioStorageService(StorageServicePort):
+class AudioStorageService(AudioStorageServicePort):
     """
-    S3 implementation of StorageServicePort for audio files.
+    S3 implementation of AudioStorageServicePort for audio files.
     
     Focuses on business logic for signed URL operations.
     Infrastructure concerns (bucket creation, configuration) are handled by S3Setup.
@@ -56,34 +56,34 @@ class AudioStorageService(StorageServicePort):
             })
             self._bucket_checked = True  # Don't retry
     
-    async def generate_upload_url(
+    async def generate_audio_upload_url(
         self,
         file_path: str,
         content_type: str = "audio/wav",
         expiration_minutes: int = 15
     ) -> Dict[str, Any]:
         """
-        Generate signed URL for file upload to S3 with REAL validation.
+        Generate signed URL for audio file upload to S3 with REAL validation.
         
         Args:
-            file_path: Relative path where file will be stored
-            content_type: MIME type of the file being uploaded
+            file_path: Relative path where audio file will be stored
+            content_type: MIME type of the audio file being uploaded
             expiration_minutes: URL expiration time in minutes
             
         Returns:
             Dict containing upload URL, fields, and metadata
             
         Raises:
-            StorageError: If URL generation fails
+            AudioStorageError: If URL generation fails
         """
         try:
             # Ensure bucket exists (lazy initialization)
             self._ensure_bucket_exists()
             
             # Validate inputs
-            self._validate_file_path(file_path, "generate_upload_url")
-            self._validate_expiration(expiration_minutes, 1, 60, "generate_upload_url")
-            self._validate_content_type(content_type, "generate_upload_url")
+            self._validate_file_path(file_path, "generate_audio_upload_url")
+            self._validate_expiration(expiration_minutes, 1, 60, "generate_audio_upload_url")
+            self._validate_content_type(content_type, "generate_audio_upload_url")
             
             # Clean the file path
             clean_path = self._clean_path(file_path)
@@ -134,8 +134,8 @@ class AudioStorageService(StorageServicePort):
                 'upload_method': 'POST'  # Important: POST, not PUT
             }
             
-            logger.debug("Generated upload URL with size validation", extra={
-                "operation": "generate_upload_url",
+            logger.debug("Generated audio upload URL with size validation", extra={
+                "operation": "generate_audio_upload_url",
                 "file_path": clean_path,
                 "content_type": content_type,
                 "max_size_bytes": max_size if content_type.startswith('audio/') else None,
@@ -144,49 +144,49 @@ class AudioStorageService(StorageServicePort):
             
             return result
             
-        except StorageError:
+        except AudioStorageError:
             raise
         except ClientError as e:
-            raise self._handle_client_error(e, "generate_upload_url", file_path)
+            raise self._handle_client_error(e, "generate_audio_upload_url", file_path)
         except NoCredentialsError:
-            raise StorageError("S3 credentials not configured", "generate_upload_url", file_path)
+            raise AudioStorageError("S3 credentials not configured", "generate_audio_upload_url", file_path)
         except Exception as e:
-            logger.error("Unexpected error generating upload URL", extra={
-                "operation": "generate_upload_url",
+            logger.error("Unexpected error generating audio upload URL", extra={
+                "operation": "generate_audio_upload_url",
                 "error": str(e),
                 "file_path": file_path
             })
-            raise StorageError(f"Failed to generate upload URL: {str(e)}", "generate_upload_url", file_path)
+            raise AudioStorageError(f"Failed to generate audio upload URL: {str(e)}", "generate_audio_upload_url", file_path)
     
-    async def generate_download_url(
+    async def generate_audio_download_url(
         self,
         file_path: str,
         expiration_minutes: int = 60
     ) -> str:
         """
-        Generate signed URL for file download from S3.
+        Generate signed URL for audio file download from S3.
         
         Args:
-            file_path: Relative path to the file
+            file_path: Relative path to the audio file
             expiration_minutes: URL expiration time in minutes
             
         Returns:
             str: Signed URL for GET request
             
         Raises:
-            StorageError: If file doesn't exist or URL generation fails
+            AudioStorageError: If file doesn't exist or URL generation fails
         """
         try:
             # Validate inputs
-            self._validate_file_path(file_path, "generate_download_url")
-            self._validate_expiration(expiration_minutes, 1, 1440, "generate_download_url")
+            self._validate_file_path(file_path, "generate_audio_download_url")
+            self._validate_expiration(expiration_minutes, 1, 1440, "generate_audio_download_url")
             
             # Clean the file path
             clean_path = self._clean_path(file_path)
             
             # Check if file exists first
-            if not await self.file_exists(clean_path):
-                raise StorageError(f"File does not exist: {clean_path}", "generate_download_url", clean_path)
+            if not await self.audio_file_exists(clean_path):
+                raise AudioStorageError(f"Audio file does not exist: {clean_path}", "generate_audio_download_url", clean_path)
             
             # Generate presigned URL for GET
             presigned_url = self.s3_client.generate_presigned_url(
@@ -199,37 +199,37 @@ class AudioStorageService(StorageServicePort):
                 HttpMethod='GET'
             )
             
-            logger.debug("Generated download URL", extra={
-                "operation": "generate_download_url",
+            logger.debug("Generated audio download URL", extra={
+                "operation": "generate_audio_download_url",
                 "file_path": clean_path,
                 "expiration_minutes": expiration_minutes
             })
             
             return presigned_url
             
-        except StorageError:
+        except AudioStorageError:
             raise
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
-                raise StorageError(f"File not found: {file_path}", "generate_download_url", file_path)
-            raise self._handle_client_error(e, "generate_download_url", file_path)
+                raise AudioStorageError(f"Audio file not found: {file_path}", "generate_audio_download_url", file_path)
+            raise self._handle_client_error(e, "generate_audio_download_url", file_path)
         except Exception as e:
-            logger.error("Unexpected error generating download URL", extra={
-                "operation": "generate_download_url",
+            logger.error("Unexpected error generating audio download URL", extra={
+                "operation": "generate_audio_download_url",
                 "error": str(e),
                 "file_path": file_path
             })
-            raise StorageError(f"Failed to generate download URL: {str(e)}", "generate_download_url", file_path)
+            raise AudioStorageError(f"Failed to generate audio download URL: {str(e)}", "generate_audio_download_url", file_path)
     
-    async def file_exists(self, file_path: str) -> bool:
+    async def audio_file_exists(self, file_path: str) -> bool:
         """
-        Check if file exists in S3 bucket.
+        Check if audio file exists in S3 bucket.
         
         Args:
             file_path: Relative path to check
             
         Returns:
-            bool: True if file exists, False otherwise
+            bool: True if audio file exists, False otherwise
         """
         try:
             if not file_path or not file_path.strip():
@@ -244,8 +244,8 @@ class AudioStorageService(StorageServicePort):
                 Key=clean_path
             )
             
-            logger.debug("File exists check: found", extra={
-                "operation": "file_exists",
+            logger.debug("Audio file exists check: found", extra={
+                "operation": "audio_file_exists",
                 "file_path": clean_path,
                 "exists": True
             })
@@ -256,16 +256,16 @@ class AudioStorageService(StorageServicePort):
             error_code = e.response['Error']['Code']
             
             if error_code in ['NoSuchKey', '404']:
-                logger.debug("File exists check: not found", extra={
-                    "operation": "file_exists",
+                logger.debug("Audio file exists check: not found", extra={
+                    "operation": "audio_file_exists",
                     "file_path": file_path,
                     "exists": False
                 })
                 return False
             
             # Other errors should be logged but still return False
-            logger.warning("Error checking file existence", extra={
-                "operation": "file_exists",
+            logger.warning("Error checking audio file existence", extra={
+                "operation": "audio_file_exists",
                 "error_code": error_code,
                 "file_path": file_path
             })
@@ -273,22 +273,22 @@ class AudioStorageService(StorageServicePort):
             
         except Exception as e:
             # Log unexpected errors but don't raise - return False
-            logger.warning("Unexpected error checking file existence", extra={
-                "operation": "file_exists",
+            logger.warning("Unexpected error checking audio file existence", extra={
+                "operation": "audio_file_exists",
                 "error": str(e),
                 "file_path": file_path
             })
             return False
     
-    async def delete_file(self, file_path: str) -> bool:
+    async def delete_audio_file(self, file_path: str) -> bool:
         """
-        Delete a file from S3 storage.
+        Delete an audio file from S3 storage.
         Args:
-            file_path: Relative path to the file to delete
+            file_path: Relative path to the audio file to delete
         Returns:
-            bool: True if file was deleted, False if not found
+            bool: True if audio file was deleted, False if not found
         Raises:
-            StorageError: If deletion fails
+            AudioStorageError: If deletion fails
         """
         try:
             self._validate_file_path(file_path, "delete_file")
@@ -298,54 +298,58 @@ class AudioStorageService(StorageServicePort):
                 Key=clean_path
             )
             # S3 delete_object is idempotent: no error if not found
-            logger.info("Deleted file from S3", extra={
-                "operation": "delete_file",
+            logger.info("Deleted audio file from S3", extra={
+                "operation": "delete_audio_file",
                 "file_path": clean_path
             })
             return True
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'NoSuchKey':
-                logger.info("File not found for deletion", extra={
-                    "operation": "delete_file",
+                logger.info("Audio file not found for deletion", extra={
+                    "operation": "delete_audio_file",
                     "file_path": file_path
                 })
                 return False
-            raise self._handle_client_error(e, "delete_file", file_path)
+            raise self._handle_client_error(e, "delete_audio_file", file_path)
         except Exception as e:
-            logger.error("Unexpected error deleting file", extra={
-                "operation": "delete_file",
+            logger.error("Unexpected error deleting audio file", extra={
+                "operation": "delete_audio_file",
                 "error": str(e),
                 "file_path": file_path
             })
-            raise StorageError(f"Failed to delete file: {str(e)}", "delete_file", file_path)
+            raise AudioStorageError(f"Failed to delete audio file: {str(e)}", "delete_audio_file", file_path)
     
     # Helper methods for business logic
     
     def _validate_file_path(self, file_path: str, operation: str) -> None:
-        """Validate file path format and raise StorageError if invalid."""
+        """Validate file path format and raise AudioStorageError if invalid."""
         if not file_path or not file_path.strip():
-            raise StorageError("File path cannot be empty", operation)
+            raise AudioStorageError("File path cannot be empty", operation)
         
         clean_path = file_path.strip()
         
         # Basic validations
         if clean_path in ['/', '.', '..']:
-            raise StorageError(f"Invalid file path: {file_path}", operation)
+            raise AudioStorageError(f"Invalid file path: {file_path}", operation)
+        
+        # Check for path traversal attempts
+        if '..' in clean_path or '/../' in clean_path or clean_path.startswith('../'):
+            raise AudioStorageError(f"Path traversal not allowed: {file_path}", operation)
         
         # Check for invalid characters
         invalid_chars = ['\\', '<', '>', ':', '"', '|', '?', '*']
         if any(char in clean_path for char in invalid_chars):
-            raise StorageError(f"File path contains invalid characters: {file_path}", operation)
+            raise AudioStorageError(f"File path contains invalid characters: {file_path}", operation)
         
         # Check for reasonable length (S3 key limit is 1024 bytes)
         if len(clean_path) > 1024:
-            raise StorageError(f"File path too long (max 1024 characters): {file_path}", operation)
+            raise AudioStorageError(f"File path too long (max 1024 characters): {file_path}", operation)
     
     def _validate_expiration(self, minutes: int, min_val: int, max_val: int, operation: str) -> None:
         """Validate expiration time."""
         if not isinstance(minutes, int) or minutes < min_val or minutes > max_val:
-            raise StorageError(
+            raise AudioStorageError(
                 f"Invalid expiration: {minutes} minutes (must be {min_val}-{max_val})",
                 operation, ""
             )
@@ -353,11 +357,11 @@ class AudioStorageService(StorageServicePort):
     def _validate_content_type(self, content_type: str, operation: str) -> None:
         """Validate content type against allowed MIME types."""
         if not content_type:
-            raise StorageError("Content type is required", operation, "")
+            raise AudioStorageError("Content type is required", operation, "")
         
         allowed_types = AudioConstraints.ALLOWED_AUDIO_MIME_TYPES
         if content_type.lower() not in allowed_types:
-            raise StorageError(
+            raise AudioStorageError(
                 f"Invalid content type: {content_type}. Allowed: {', '.join(allowed_types)}",
                 operation, ""
             )
@@ -365,11 +369,11 @@ class AudioStorageService(StorageServicePort):
     def _validate_audio_file_size(self, file_size_bytes: int, operation: str) -> None:
         """Validate audio file size against configured limits."""
         if file_size_bytes <= 0:
-            raise StorageError("Audio file size must be positive", operation, "")
+            raise AudioStorageError("Audio file size must be positive", operation, "")
         
         max_size = AudioConstraints.get_max_audio_file_size_bytes()
         if file_size_bytes > max_size:
-            raise StorageError(
+            raise AudioStorageError(
                 f"Audio file size {file_size_bytes} bytes exceeds maximum {max_size} bytes",
                 operation, ""
             )
@@ -378,8 +382,8 @@ class AudioStorageService(StorageServicePort):
         """Clean and normalize file path."""
         return file_path.strip().lstrip('/')
     
-    def _handle_client_error(self, error: ClientError, operation: str, file_path: str) -> StorageError:
-        """Handle S3 client errors and convert to StorageError."""
+    def _handle_client_error(self, error: ClientError, operation: str, file_path: str) -> AudioStorageError:
+        """Handle S3 client errors and convert to AudioStorageError."""
         error_code = error.response['Error']['Code']
         error_message = error.response['Error']['Message']
         
@@ -389,14 +393,14 @@ class AudioStorageService(StorageServicePort):
             "file_path": file_path
         })
         
-        return StorageError(f"S3 error {error_code}: {error_message}", operation, file_path)
+        return AudioStorageError(f"S3 error {error_code}: {error_message}", operation, file_path)
     
-    def get_service_info(self) -> Dict[str, Any]:
+    def get_audio_service_info(self) -> Dict[str, Any]:
         """
-        Get storage service information and configuration.
+        Get audio storage service information and configuration.
         
         Returns:
-            Dict with service configuration and status
+            Dict with audio service configuration and status
         """
         return {
             'service_type': 's3',

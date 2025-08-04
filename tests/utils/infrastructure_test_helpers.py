@@ -15,6 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from app.core.services.audio_storage_service import AudioStorageService
 from app.infrastructure.config.infrastructure_settings import infra_settings
 from app.infrastructure.services.health_checks import health_check_service
+from tests.utils.mock_helpers import MockHelpers
 
 
 class InfrastructureTestHelpers:
@@ -24,7 +25,7 @@ class InfrastructureTestHelpers:
     def create_mock_service() -> AudioStorageService:
         """Create AudioStorageService with mock S3 client for unit tests."""
         service = AudioStorageService()
-        service.s3_client = Mock()
+        service.s3_client = MockHelpers.create_mock_s3_client()
         service.bucket_name = infra_settings.s3_bucket_name or "test-bucket"
         return service
     
