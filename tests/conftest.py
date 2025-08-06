@@ -26,6 +26,7 @@ from app.core.usecases.register_user import RegisterUserUseCase
 # Test helpers and infrastructure imports
 from tests.utils.infrastructure_test_helpers import InfrastructureTestHelpers
 from tests.utils.mock_helpers import MockHelpers
+from tests.utils.dependency_mocker import DependencyMocker
 from app.infrastructure.services.health_checks import health_check_service
 
 
@@ -49,6 +50,12 @@ def test_settings(monkeypatch):
 def infrastructure_helpers():
     """Fixture to provide InfrastructureTestHelpers instance for all tests."""
     return InfrastructureTestHelpers()
+
+
+@pytest.fixture
+def dependency_mocker():
+    """Fixture to provide DependencyMocker instance for all tests."""
+    return DependencyMocker()
 
 
 # MOCK FIXTURES (for unit tests)

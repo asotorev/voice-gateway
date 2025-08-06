@@ -1,200 +1,182 @@
 """
-Audio API routes for S3 operations.
-Handles audio file upload/download URL generation and file management.
+Audio routes for Voice Gateway API.
+Handles audio upload, download, and management operations.
 """
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Dict, Any
-from app.core.services.audio_storage_service import AudioStorageService
-from app.core.ports.audio_storage_port import AudioStorageError
+from fastapi import APIRouter, Depends, HTTPException
+from app.api.dependencies import get_audio_management_use_case, get_audio_storage_service
+from app.core.models import AudioServiceInfo
+from app.core.usecases.audio_management import AudioManagementUseCase
+from app.core.ports.audio_storage import AudioStorageServicePort
+from app.adapters.mappers.audio_mapper import AudioResponseMapper
 from app.schemas.audio import (
-    UploadUrlRequest,
-    UploadUrlResponse,
-    DownloadUrlRequest,
-    DownloadUrlResponse,
-    FileExistsResponse,
-    DeleteFileResponse,
-    StorageInfoResponse
+    AudioUploadRequest,
+    AudioUploadResponse,
+    AudioDownloadRequest,
+    AudioDownloadResponse,
+    AudioExistsResponse,
+    AudioInfoResponse,
+    AudioStatusResponse,
+    AudioDeleteResponse
 )
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 
 
-def get_storage_service() -> AudioStorageService:
-    """Dependency to provide storage service."""
-    return AudioStorageService()
-
-
-@router.post("/upload-url", response_model=UploadUrlResponse)
+@router.post("/upload", response_model=AudioUploadResponse)
 async def generate_audio_upload_url(
-    request: UploadUrlRequest,
-    storage_service: AudioStorageService = Depends(get_storage_service)
-) -> UploadUrlResponse:
+    request: AudioUploadRequest,
+    audio_management: AudioManagementUseCase = Depends(get_audio_management_use_case)
+) -> AudioUploadResponse:
     """
-    Generate signed URL for audio file upload to S3.
+    Generate presigned URL for audio file upload.
     
-    Returns a presigned POST URL with form fields that the client can use
-    to upload audio files directly to S3 with size and type validation.
-    
-    Args:
-        request: Upload URL request with file path, content type, and expiration
-        storage_service: Storage service dependency
-        
-    Returns:
-        UploadUrlResponse with upload URL and metadata
-        
-    Raises:
-        HTTPException: 400 if validation fails, 500 for server errors
+    Creates upload URL with business validation and user authorization.
     """
     try:
-        result = await storage_service.generate_audio_upload_url(
-            file_path=request.file_path,
-            content_type=request.content_type,
+        # Execute use case
+        domain_result = await audio_management.generate_audio_upload_url(
+            user_id=request.user_id,
+            sample_number=request.sample_number,
+            format=request.format,
             expiration_minutes=request.expiration_minutes
         )
-        return UploadUrlResponse(**result)
-    except AudioStorageError as e:
+        
+        # Map to API response
+        return AudioResponseMapper.to_upload_response(domain_result)
+        
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/download-url", response_model=DownloadUrlResponse)
+@router.post("/download-url", response_model=AudioDownloadResponse)
 async def generate_audio_download_url(
-    request: DownloadUrlRequest,
-    storage_service: AudioStorageService = Depends(get_storage_service)
-) -> DownloadUrlResponse:
+    request: AudioDownloadRequest,
+    audio_management: AudioManagementUseCase = Depends(get_audio_management_use_case)
+) -> AudioDownloadResponse:
     """
-    Generate signed URL for audio file download from S3.
+    Generate presigned URL for audio file download.
     
-    Verifies audio file exists before generating download URL to prevent
-    generation of URLs for non-existent files.
-    
-    Args:
-        request: Download URL request with file path and expiration
-        storage_service: Storage service dependency
-        
-    Returns:
-        DownloadUrlResponse with download URL and metadata
-        
-    Raises:
-        HTTPException: 400 if file doesn't exist, 500 for server errors
+    Creates download URL with user authorization and file validation.
     """
     try:
-        download_url = await storage_service.generate_audio_download_url(
+        # Execute use case
+        domain_result = await audio_management.generate_audio_download_url(
+            user_id=request.user_id,
             file_path=request.file_path,
             expiration_minutes=request.expiration_minutes
         )
-        return DownloadUrlResponse(
-            download_url=download_url,
-            file_path=request.file_path,
-            expiration_minutes=request.expiration_minutes,
-            access_method="GET"
-        )
-    except AudioStorageError as e:
+        
+        # Map to API response
+        return AudioResponseMapper.to_download_response(domain_result)
+        
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/file/{file_path:path}/exists", response_model=FileExistsResponse)
+@router.get("/file/{file_path:path}/exists", response_model=AudioExistsResponse)
 async def check_audio_file_exists(
     file_path: str,
-    storage_service: AudioStorageService = Depends(get_storage_service)
-) -> FileExistsResponse:
+    audio_storage: AudioStorageServicePort = Depends(get_audio_storage_service)
+) -> AudioExistsResponse:
     """
-    Check if an audio file exists in S3 storage.
-    
-    Useful for validation before attempting downloads or to verify
-    successful uploads.
-    
-    Args:
-        file_path: Relative path to the audio file (captured from URL path)
-        
-    Returns:
-        FileExistsResponse containing file existence status and metadata
+    Check if audio file exists in storage.
     """
     try:
-        exists = await storage_service.audio_file_exists(file_path)
-        return FileExistsResponse(
+        # Delegate directly to storage service (technical operation)
+        exists = await audio_storage.audio_file_exists(file_path)
+
+        return AudioExistsResponse(
             file_path=file_path,
             exists=exists,
             storage_service="s3"
         )
+
     except Exception as e:
-        # For file existence checks, we don't want to expose internal errors
-        # Return false for any error (file doesn't exist or can't be checked)
-        return FileExistsResponse(
+        # Fallback response in case of unexpected errors
+        return AudioExistsResponse(
             file_path=file_path,
             exists=False,
+            storage_service="s3",
             error="Unable to verify file existence"
         )
 
 
-@router.delete("/file/{file_path:path}", response_model=DeleteFileResponse)
+@router.delete("/file/{file_path:path}", response_model=AudioDeleteResponse)
 async def delete_audio_file(
     file_path: str,
-    storage_service: AudioStorageService = Depends(get_storage_service)
-) -> DeleteFileResponse:
+    user_id: str,
+    audio_management: AudioManagementUseCase = Depends(get_audio_management_use_case)
+) -> AudioDeleteResponse:
     """
-    Delete an audio file from S3 storage.
-    
-    Performs actual deletion of the audio file. Use with caution as this
-    operation cannot be undone.
-    
-    Args:
-        file_path: Relative path to the audio file (captured from URL path)
-        
-    Returns:
-        DeleteFileResponse containing deletion status and metadata
-        
-    Raises:
-        HTTPException: 500 for server errors (404 not raised for idempotent deletes)
+    Delete audio file with user authorization.
     """
     try:
-        deleted = await storage_service.delete_audio_file(file_path)
-        return DeleteFileResponse(
-            file_path=file_path,
-            deleted=deleted,
-            message="File deleted successfully" if deleted else "File not found (already deleted)"
-        )
-    except AudioStorageError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Execute use case
+        domain_result = await audio_management.delete_audio_file(user_id, file_path)
+        
+        # Map to API response
+        return AudioResponseMapper.to_delete_response(domain_result)
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/info", response_model=StorageInfoResponse)
-async def get_audio_service_info(
-    storage_service: AudioStorageService = Depends(get_storage_service)
-) -> StorageInfoResponse:
+@router.get("/user/{user_id}/setup-status", response_model=AudioStatusResponse)
+async def get_user_audio_setup_status(
+    user_id: str,
+    audio_management: AudioManagementUseCase = Depends(get_audio_management_use_case)
+) -> AudioStatusResponse:
     """
-    Get audio service information and configuration.
-    
-    Provides information about audio storage service configuration,
-    limits, capabilities, and supported audio formats.
-    
-    Returns:
-        StorageInfoResponse containing audio service configuration and status
-        
-    Raises:
-        HTTPException: 500 if unable to retrieve service information
+    Get user voice setup status and progress.
     """
     try:
-        info = storage_service.get_audio_service_info()
-        return StorageInfoResponse(
+        # Execute use case
+        domain_result = await audio_management.get_user_audio_status(user_id)
+        
+        # Map to API response
+        return AudioResponseMapper.to_status_response(domain_result)
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/info", response_model=AudioInfoResponse)
+async def get_audio_storage_info(
+    audio_storage: AudioStorageServicePort = Depends(get_audio_storage_service)
+) -> AudioInfoResponse:
+    """
+    Get audio storage service information.
+    """
+    try:
+        # Delegate directly to storage service (technical operation)
+        service_info: AudioServiceInfo = audio_storage.get_audio_service_info()
+
+        return AudioInfoResponse(
+            service_type=service_info.service_type,
+            bucket_name=service_info.bucket_name,
+            region=service_info.region,
+            use_local_s3=service_info.use_local_s3,
+            endpoint_url=service_info.endpoint_url,
+            max_file_size_mb=service_info.max_file_size_mb,
+            allowed_formats=service_info.allowed_formats,
+            upload_expiration_default=service_info.upload_expiration_default,
+            download_expiration_default=service_info.download_expiration_default,
             api_version="1.0",
             supported_operations=[
-                "generate_upload_url",
-                "generate_download_url", 
-                "check_file_exists",
-                "delete_file"
+                "upload", "download", "delete", "exists",
+                "setup_status", "info"
             ],
-            storage_service="s3",
-            bucket_name=info.get("bucket_name", ""),
-            region=info.get("region", ""),
-            max_file_size_mb=info.get("max_file_size_mb", 10),
-            upload_expiration_minutes=info.get("upload_expiration_minutes", 15),
-            download_expiration_minutes=info.get("download_expiration_minutes", 60)
+            voice_sample_support=service_info.voice_sample_support,
+            individual_upload_support=service_info.individual_upload_support
         )
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unable to retrieve storage info: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
