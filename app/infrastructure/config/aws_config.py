@@ -22,10 +22,10 @@ class AWSConfig:
         self._boto_config = Config(
             region_name=infra_settings.aws_region,
             retries={
-                'max_attempts': 3,
+                'max_attempts': infra_settings.aws_max_retry_attempts,
                 'mode': 'adaptive'
             },
-            max_pool_connections=50
+            max_pool_connections=infra_settings.aws_max_pool_connections
         )
     
     @property
@@ -104,10 +104,10 @@ class AWSConfig:
         s3_config = Config(
             region_name=infra_settings.aws_region,
             retries={
-                'max_attempts': 3,
+                'max_attempts': infra_settings.aws_max_retry_attempts,
                 'mode': 'adaptive'
             },
-            max_pool_connections=50,
+            max_pool_connections=infra_settings.aws_max_pool_connections,
             signature_version=infra_settings.s3_signature_version
         )
         kwargs = {
@@ -115,7 +115,6 @@ class AWSConfig:
             'config': s3_config
         }
         if infra_settings.use_local_s3:
-            # MinIO configuration
             kwargs.update({
                 'endpoint_url': infra_settings.s3_endpoint_url,
                 'region_name': infra_settings.aws_region,
@@ -151,6 +150,47 @@ class AWSConfig:
                 f"Failed to connect to DynamoDB table '{table_name}': {str(e)}"
             )
     
+    def get_full_audio_url(self, audio_path: str) -> str:
+        """
+        Convert relative audio path to full URL.
+        
+        Args:
+            audio_path: Relative path like 'user123/sample1.wav'
+            
+        Returns:
+            Full URL like 's3://voice-gateway-audio/user123/sample1.wav'
+        """
+        if not audio_path:
+            raise ValueError("Audio path cannot be empty")
+        
+        base_url = infra_settings.audio_base_url
+        if not base_url.endswith('/'):
+            base_url += '/'
+        
+        path = audio_path.lstrip('/')
+        return base_url + path
+    
+    def get_s3_config(self) -> dict:
+        """
+        Get S3 configuration for boto3 client.
+        
+        Returns:
+            Dict with S3 client configuration
+        """
+        config = {
+            'region_name': infra_settings.aws_region,
+            'signature_version': infra_settings.s3_signature_version,
+            'use_ssl': infra_settings.s3_use_ssl
+        }
+        
+        if infra_settings.use_local_s3:
+            config.update({
+                'endpoint_url': infra_settings.s3_endpoint_url,
+                'aws_access_key_id': 'minioadmin',
+                'aws_secret_access_key': 'minioadmin'
+            })
+        
+        return config
 
 
 # Global AWS configuration instance

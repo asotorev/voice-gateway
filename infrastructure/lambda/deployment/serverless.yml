@@ -1,0 +1,104 @@
+service: ${env:SERVERLESS_SERVICE_NAME, 'voice-gateway-lambda'}
+
+frameworkVersion: "3"
+
+provider:
+  name: ${env:SERVERLESS_PROVIDER_NAME, 'aws'}
+  runtime: ${env:LAMBDA_RUNTIME, 'python3.9'}
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${env:STAGE, 'dev'}
+  timeout: ${env:LAMBDA_TIMEOUT, '900'}
+  memorySize: ${env:LAMBDA_MEMORY_SIZE, '3008'}
+
+  environment:
+    STAGE: ${self:provider.stage}
+    AWS_REGION: ${self:provider.region}
+    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+    USERS_TABLE_NAME: ${env:USERS_TABLE_NAME}
+    LOG_LEVEL: ${env:LAMBDA_LOG_LEVEL, 'INFO'}
+    MAX_AUDIO_FILE_SIZE_MB: ${env:MAX_AUDIO_FILE_SIZE_MB, '10'}
+    REQUIRED_AUDIO_SAMPLES: ${env:REQUIRED_AUDIO_SAMPLES, '3'}
+    PROCESSING_TIMEOUT_SECONDS: ${env:PROCESSING_TIMEOUT_SECONDS, '180'}
+    LAMBDA_MAX_RETRIES: ${env:LAMBDA_MAX_RETRIES, '3'}
+    VOICE_EMBEDDING_DIMENSIONS: ${env:VOICE_EMBEDDING_DIMENSIONS, '256'}
+
+  iam:
+    role:
+      statements:
+        # S3 permissions for audio file access
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+          Resource:
+            - arn:aws:s3:::${env:S3_BUCKET_NAME}/*
+
+        # DynamoDB permissions for user updates
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${env:USERS_TABLE_NAME}
+
+        # CloudWatch Logs permissions
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: "*"
+
+functions:
+  audioEmbeddingProcessor:
+    handler: ${env:LAMBDA_FUNCTION_NAME, 'audio_embedding_processor'}.handler.lambda_handler
+    description: "Process audio files to generate voice embeddings"
+    reservedConcurrency: ${env:LAMBDA_CONCURRENT_EXECUTIONS, '10'}
+
+    events:
+      # S3 trigger for new audio uploads
+      - s3:
+          bucket: ${env:S3_BUCKET_NAME}
+          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
+          rules:
+            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
+            - suffix: .wav
+      - s3:
+          bucket: ${env:S3_BUCKET_NAME}
+          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
+          rules:
+            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
+            - suffix: .mp3
+      - s3:
+          bucket: ${env:S3_BUCKET_NAME}
+          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
+          rules:
+            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
+            - suffix: .m4a
+
+    layers:
+      # Will be added in later commits
+      # - ${cf:voice-gateway-layers-${self:provider.stage}.AudioMLLayerArn}
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+
+package:
+  patterns:
+    - "!node_modules/**"
+    - "!.git/**"
+    - "!.pytest_cache/**"
+    - "!tests/**"
+    - "!**/__pycache__/**"
+    - "!.env"
+    - "!.DS_Store"
+
+resources:
+  Description: "Voice Gateway Lambda functions for audio processing"
