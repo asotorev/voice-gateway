@@ -10,7 +10,7 @@ import logging
 import tempfile
 from typing import Optional, Dict, Any, BinaryIO
 from botocore.exceptions import ClientError
-from aws_lambda_config import aws_lambda_config_manager
+from ..utils.aws_lambda_config import aws_lambda_config_manager
 
 logger = logging.getLogger(__name__)
 
