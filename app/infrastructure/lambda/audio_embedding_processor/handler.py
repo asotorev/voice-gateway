@@ -38,8 +38,8 @@ except ImportError:
         s3_trigger_prefix = os.getenv('S3_TRIGGER_PREFIX', 'audio-uploads/')
     infra_settings = MockSettings()
 
-# Configure logging
-logger = logging.getLogger()
+import logging
+logger = logging.getLogger(__name__)
 logger.setLevel(getattr(logging, infra_settings.lambda_log_level))
 
 
@@ -157,10 +157,10 @@ def process_single_audio_file(s3_event: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'bucket': bucket,
         'key': key,
-        'user_id': 'mock_user_id',  # Will extract from filename
+        'user_id': 'placeholder_user_id',
         'embedding_generated': True,
-        'registration_complete': False,  # Will check actual count
-        'processing_time_ms': 0  # Will measure actual time
+        'registration_complete': False,
+        'processing_time_ms': 0
     }
 
 
