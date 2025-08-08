@@ -27,6 +27,7 @@ if '/var/task' not in sys.path:
 
 # Import Lambda-specific modules
 from utils.event_parser import S3EventParser
+from pipeline_orchestrator import AudioProcessingPipeline
 
 # Import project configuration (will be available in Lambda environment)
 try:
@@ -145,23 +146,62 @@ def process_single_audio_file(s3_event: Dict[str, Any]) -> Dict[str, Any]:
         "size_bytes": s3_event['size']
     })
     
-    # TODO: Implement in next commits:
-    # 1. Download audio file from S3
-    # 2. Validate audio file format and quality
-    # 3. Extract user_id from file path/name
-    # 4. Generate voice embedding (mock for now)
-    # 5. Update user record in DynamoDB
-    # 6. Check registration completion
-    
-    # For now, return mock processing result
-    return {
-        'bucket': bucket,
-        'key': key,
-        'user_id': 'placeholder_user_id',
-        'embedding_generated': True,
-        'registration_complete': False,
-        'processing_time_ms': 0
-    }
+    try:
+        # Extract user_id from S3 key
+        user_id = extract_user_id_from_key(key)
+        
+        # Initialize audio processing pipeline
+        pipeline = AudioProcessingPipeline()
+        
+        # Run complete audio processing pipeline
+        s3_event_data = {
+            'bucket': bucket,
+            'key': key,
+            'size': s3_event['size'],
+            'user_id': user_id
+        }
+        result = pipeline.process_s3_event(s3_event_data)
+        
+        logger.info("Audio processing pipeline completed", extra={
+            "bucket": bucket,
+            "key": key,
+            "user_id": user_id,
+            "success": result.get('success', False),
+            "registration_complete": result.get('completion_stage', {}).get('is_complete', False)
+        })
+        
+        # Return comprehensive result
+        return {
+            'bucket': bucket,
+            'key': key,
+            'user_id': user_id,
+            'success': result.get('success', False),
+            'embedding_generated': result.get('embedding_stage', {}).get('status') == 'success',
+            'registration_complete': result.get('completion_stage', {}).get('is_complete', False),
+            'processing_time_ms': result.get('processing_time_ms', 0),
+            'pipeline_stages': result.get('processing_stages', {}),
+            'completion_response': result.get('completion_response'),
+            'progress_response': result.get('progress_response'),
+            'error_details': result.get('error_details')
+        }
+        
+    except Exception as e:
+        logger.error("Audio processing pipeline failed", extra={
+            "bucket": bucket,
+            "key": key,
+            "error": str(e)
+        })
+        
+        return {
+            'bucket': bucket,
+            'key': key,
+            'user_id': None,
+            'success': False,
+            'embedding_generated': False,
+            'registration_complete': False,
+            'processing_time_ms': 0,
+            'error': str(e)
+        }
 
 
 def extract_user_id_from_key(s3_key: str) -> str:

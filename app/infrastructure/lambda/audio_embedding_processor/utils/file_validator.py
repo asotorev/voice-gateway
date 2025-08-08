@@ -95,11 +95,17 @@ class AudioFileValidator:
         except Exception as e:
             logger.error("File validation failed with exception", extra={
                 "error": str(e),
+                "error_type": type(e).__name__,
                 "file_name": metadata.get('file_name', 'unknown')
             })
             
             validation_result['is_valid'] = False
             validation_result['validation_failed'].append(f"Validation exception: {str(e)}")
+            validation_result['error_details'] = {
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'recoverable': self._is_recoverable_error(e)
+            }
             return validation_result
     
     def _validate_file_size(self, audio_data: bytes, result: Dict[str, Any]) -> None:
@@ -347,10 +353,128 @@ class AudioFileValidator:
             Summary string
         """
         if validation_result['is_valid']:
-            return f"✅ Valid - {len(validation_result['validation_passed'])} checks passed"
+            return f"Valid - {len(validation_result['validation_passed'])} checks passed"
         else:
             failed_count = len(validation_result['validation_failed'])
-            return f"❌ Invalid - {failed_count} check(s) failed: {', '.join(validation_result['validation_failed'][:2])}"
+            return f"Invalid - {failed_count} check(s) failed: {', '.join(validation_result['validation_failed'][:2])}"
+    
+    def _is_recoverable_error(self, error: Exception) -> bool:
+        """
+        Determine if an error is recoverable.
+        
+        Args:
+            error: Exception that occurred during validation
+            
+        Returns:
+            True if error might be recoverable with retry
+        """
+        recoverable_errors = (
+            IOError,
+            OSError,
+            MemoryError,
+            TimeoutError
+        )
+        
+        # Network-related errors that might be transient
+        if "timeout" in str(error).lower() or "connection" in str(error).lower():
+            return True
+            
+        return isinstance(error, recoverable_errors)
+    
+    def validate_with_retry(self, audio_data: bytes, metadata: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
+        """
+        Validate file with retry logic for recoverable errors.
+        
+        Args:
+            audio_data: Raw audio file bytes
+            metadata: File metadata
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Validation result with retry information
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                result = self.validate_file(audio_data, metadata)
+                
+                if result['is_valid'] or not result.get('error_details', {}).get('recoverable', False):
+                    # Success or non-recoverable error - don't retry
+                    if attempt > 0:
+                        result['retry_info'] = {
+                            'attempts': attempt + 1,
+                            'succeeded_on_retry': True
+                        }
+                    return result
+                    
+            except Exception as e:
+                if attempt == max_retries or not self._is_recoverable_error(e):
+                    # Final attempt or non-recoverable error
+                    logger.error("Validation failed after retries", extra={
+                        "attempts": attempt + 1,
+                        "error": str(e),
+                        "file_name": metadata.get('file_name', 'unknown')
+                    })
+                    
+                    return {
+                        'is_valid': False,
+                        'validation_passed': [],
+                        'validation_failed': [f"Validation failed after {attempt + 1} attempts: {str(e)}"],
+                        'warnings': [],
+                        'error_details': {
+                            'error_type': type(e).__name__,
+                            'error_message': str(e),
+                            'recoverable': self._is_recoverable_error(e)
+                        },
+                        'retry_info': {
+                            'attempts': attempt + 1,
+                            'max_retries': max_retries,
+                            'succeeded_on_retry': False
+                        }
+                    }
+                else:
+                    # Recoverable error - log and retry
+                    logger.warning("Validation failed, retrying", extra={
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries,
+                        "error": str(e),
+                        "file_name": metadata.get('file_name', 'unknown')
+                    })
+                    
+                    # Brief delay before retry (exponential backoff)
+                    import time
+                    time.sleep(0.1 * (2 ** attempt))
+        
+        # Should not reach here, but safety fallback
+        return {
+            'is_valid': False,
+            'validation_failed': ['Validation failed after all retry attempts'],
+            'retry_info': {'attempts': max_retries + 1, 'succeeded_on_retry': False}
+        }
+    
+    def create_validation_error(self, error_message: str, error_type: str = "ValidationError", recoverable: bool = False) -> Dict[str, Any]:
+        """
+        Create standardized validation error response.
+        
+        Args:
+            error_message: Human-readable error message
+            error_type: Type of error (for categorization)
+            recoverable: Whether error might be recoverable
+            
+        Returns:
+            Standardized error response
+        """
+        return {
+            'is_valid': False,
+            'validation_passed': [],
+            'validation_failed': [error_message],
+            'warnings': [],
+            'error_details': {
+                'error_type': error_type,
+                'error_message': error_message,
+                'recoverable': recoverable
+            },
+            'validated_at': datetime.utcnow().isoformat()
+        }
 
 
 # Global validator instance
