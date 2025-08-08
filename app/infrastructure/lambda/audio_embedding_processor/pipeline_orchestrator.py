@@ -16,6 +16,9 @@ from services.s3_operations import s3_operations
 from services.dynamodb_operations import dynamodb_operations
 from utils.audio_processor import process_audio_file
 from utils.file_validator import audio_file_validator
+from utils.user_status_manager import user_status_manager
+from utils.completion_checker import completion_checker
+from utils.notification_handler import notification_handler
 
 logger = logging.getLogger(__name__)
 
@@ -313,44 +316,119 @@ class AudioProcessingPipeline:
     
     def _check_completion_stage(self, user_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Stage 5: Check and update registration completion status.
+        Stage 5: Intelligent completion checking and status tracking.
         
         Args:
             user_id: User identifier
             result: Processing result to update
             
         Returns:
-            Completion check result
+            Enhanced completion check result with notifications
         """
         stage_name = "check_completion"
         logger.debug(f"Starting stage: {stage_name}")
         
         try:
-            # Get user voice summary
-            voice_summary = dynamodb_operations.get_user_voice_summary(user_id)
+            # Get complete user data for analysis
+            user_data = dynamodb_operations.get_user(user_id)
+            if not user_data:
+                raise ValueError(f"User {user_id} not found")
             
-            completion_result = {
-                'is_complete': voice_summary['registration_complete'],
-                'embedding_count': voice_summary['embedding_count'],
-                'required_samples': voice_summary['required_samples'],
-                'samples_remaining': voice_summary['samples_remaining']
+            # Perform comprehensive completion analysis
+            completion_analysis = completion_checker.check_completion_status(user_data)
+            
+            # Get detailed progress analysis
+            progress_analysis = user_status_manager.analyze_registration_progress(user_data)
+            
+            # Check if completion status should be updated
+            should_update = completion_checker.should_trigger_completion_update(
+                completion_analysis, user_data
+            )
+            
+            # Update user record if completion status changed
+            if should_update and completion_analysis['is_complete']:
+                logger.info("Updating user registration to complete", extra={
+                    "user_id": user_id,
+                    "confidence": completion_analysis['completion_confidence']
+                })
+                
+                dynamodb_operations.update_user_status(user_id, {
+                    'registration_complete': True,
+                    'registration_completed_at': datetime.now(timezone.utc).isoformat(),
+                    'completion_confidence': completion_analysis['completion_confidence']
+                })
+                
+                # Create completion response data
+                completion_response = notification_handler.notify_registration_completed(user_id, {
+                    'completion_confidence': completion_analysis['completion_confidence'],
+                    'registration_score': completion_analysis['registration_score'],
+                    'total_samples': progress_analysis['progress_metrics']['samples_collected']
+                })
+                
+                # Store completion response for Lambda return
+                enhanced_result['completion_response'] = completion_response
+            
+            # Create progress response for non-completed registrations
+            if not completion_analysis['is_complete']:
+                # Check if we should send quality warning
+                if progress_analysis['quality_analysis']['average_quality'] < 0.7:
+                    progress_response = notification_handler.notify_quality_warning(user_id, {
+                        'quality_score': progress_analysis['quality_analysis']['average_quality'],
+                        'samples_collected': progress_analysis['progress_metrics']['samples_collected'],
+                        'quality_trend': progress_analysis['quality_analysis']['quality_trend']
+                    })
+                else:
+                    # Create regular progress response
+                    progress_response = notification_handler.notify_sample_recorded(user_id, {
+                        'total_samples': progress_analysis['progress_metrics']['samples_collected'],
+                        'required_samples': progress_analysis['progress_metrics']['required_samples'],
+                        'completion_percentage': progress_analysis['progress_metrics']['completion_percentage'],
+                        'samples_remaining': progress_analysis['progress_metrics']['samples_remaining']
+                    })
+            
+            # Compile enhanced completion result
+            enhanced_result = {
+                'is_complete': completion_analysis['is_complete'],
+                'completion_confidence': completion_analysis['completion_confidence'],
+                'registration_score': completion_analysis['registration_score'],
+                'embedding_count': progress_analysis['progress_metrics']['samples_collected'],
+                'required_samples': progress_analysis['progress_metrics']['required_samples'],
+                'samples_remaining': progress_analysis['progress_metrics']['samples_remaining'],
+                'completion_percentage': progress_analysis['progress_metrics']['completion_percentage'],
+                'status_analysis': progress_analysis['current_status'],
+                'recommendations': completion_analysis['recommendations'],
+                'quality_analysis': progress_analysis['quality_analysis'],
+                'updated_record': should_update
             }
+            
+            # Add completion response if available
+            if 'completion_response' in locals():
+                enhanced_result['completion_response'] = completion_response
+                
+            # Add progress response if available  
+            if 'progress_response' in locals():
+                enhanced_result['progress_response'] = progress_response
             
             result['processing_stages'][stage_name] = {
                 'status': 'success',
-                'is_complete': completion_result['is_complete'],
-                'embedding_count': completion_result['embedding_count'],
-                'samples_remaining': completion_result['samples_remaining'],
+                'is_complete': enhanced_result['is_complete'],
+                'completion_confidence': enhanced_result['completion_confidence'],
+                'registration_score': enhanced_result['registration_score'],
+                'embedding_count': enhanced_result['embedding_count'],
+                'status_analysis': enhanced_result['status_analysis'],
+                'updated_record': enhanced_result['updated_record'],
                 'completed_at': datetime.now(timezone.utc).isoformat()
             }
             
             logger.debug(f"Stage {stage_name} completed", extra={
                 "user_id": user_id,
-                "is_complete": completion_result['is_complete'],
-                "embedding_count": completion_result['embedding_count']
+                "is_complete": enhanced_result['is_complete'],
+                "confidence": enhanced_result['completion_confidence'],
+                "score": enhanced_result['registration_score'],
+                "embedding_count": enhanced_result['embedding_count']
             })
             
-            return completion_result
+            return enhanced_result
             
         except Exception as e:
             result['processing_stages'][stage_name] = {
