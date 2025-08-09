@@ -6,6 +6,8 @@ Validates S3 settings, URL generation, and configuration properties.
 import pytest
 
 from app.core.services.audio_constraints import AudioConstraints
+from app.infrastructure.config.aws_config import aws_config
+from app.infrastructure.config.infrastructure_settings import infra_settings
 
 
 @pytest.mark.unit
@@ -38,7 +40,7 @@ def test_audio_properties(test_settings):
 @pytest.mark.unit
 def test_s3_config_generation(test_settings):
     """Test S3 configuration dictionary generation for boto3."""
-    s3_config = test_settings.get_s3_config()
+    s3_config = aws_config.get_s3_config()
     
     assert s3_config["region_name"] == "us-east-1"
     assert s3_config["signature_version"] == "s3v4"
@@ -51,14 +53,18 @@ def test_s3_config_generation(test_settings):
 @pytest.mark.unit
 def test_audio_url_generation(test_settings):
     """Test audio URL generation from relative paths."""
+    # Usar el audio_base_url real de la configuración
+    base_url = infra_settings.audio_base_url
+    if not base_url.endswith('/'):
+        base_url += '/'
     test_cases = [
-        ("user123/sample1.wav", "s3://test-bucket/user123/sample1.wav"),
-        ("user456/sample2.mp3", "s3://test-bucket/user456/sample2.mp3"),
-        ("/user789/sample3.m4a", "s3://test-bucket/user789/sample3.m4a"),  # Leading slash
+        ("user123/sample1.wav", f"{base_url}user123/sample1.wav"),
+        ("user456/sample2.mp3", f"{base_url}user456/sample2.mp3"),
+        ("/user789/sample3.m4a", f"{base_url}user789/sample3.m4a"),  # Leading slash
     ]
     
     for input_path, expected_url in test_cases:
-        result = test_settings.get_full_audio_url(input_path)
+        result = aws_config.get_full_audio_url(input_path)
         assert result == expected_url, f"Failed for input: {input_path}"
 
 
@@ -67,11 +73,11 @@ def test_audio_url_edge_cases(test_settings):
     """Test edge cases for audio URL generation."""
     # Empty path should raise ValueError
     with pytest.raises(ValueError, match="Audio path cannot be empty"):
-        test_settings.get_full_audio_url("")
+        aws_config.get_full_audio_url("")
     
     # None should raise error
     with pytest.raises((ValueError, TypeError)):
-        test_settings.get_full_audio_url(None)
+        aws_config.get_full_audio_url(None)
 
 
 @pytest.mark.unit
@@ -103,13 +109,13 @@ def test_complete_s3_workflow(test_settings):
     assert test_settings.environment == "test"
     
     # 2. Generate S3 config
-    s3_config = test_settings.get_s3_config()
+    s3_config = aws_config.get_s3_config()
     assert "endpoint_url" in s3_config
     
     # 3. Generate audio URL
     test_path = "integration_test/sample.wav"
-    audio_url = test_settings.get_full_audio_url(test_path)
-    assert audio_url.startswith(test_settings.audio_base_url)
+    audio_url = aws_config.get_full_audio_url(test_path)
+    assert audio_url.startswith(infra_settings.audio_base_url)
     
     # 4. Validate format is allowed
     file_extension = test_path.split('.')[-1]

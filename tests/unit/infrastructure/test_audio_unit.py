@@ -243,7 +243,7 @@ async def test_audio_management_delete_with_embedding_removal():
     mock_user_repository.save = AsyncMock()
     
     # Test 1: Delete file that has corresponding embedding
-    result = await use_case.delete_audio_file("user123/sample2.wav", "user123")
+    result = await use_case.delete_audio_file("user123", "user123/sample2.wav")
     
     assert isinstance(result, AudioDeleteResponse)
     assert result.deleted is True
@@ -262,7 +262,7 @@ async def test_audio_management_delete_with_embedding_removal():
     mock_audio_storage.delete_audio_file.return_value = True
     mock_user_repository.save.reset_mock()
     
-    result = await use_case.delete_audio_file("user123/nonexistent.wav", "user123")
+    result = await use_case.delete_audio_file("user123", "user123/nonexistent.wav")
     
     assert result.deleted is True
     assert result.embedding_removed is False
@@ -276,7 +276,7 @@ async def test_audio_management_delete_with_embedding_removal():
     mock_audio_storage.delete_audio_file.return_value = False
     mock_user_repository.save.reset_mock()
     
-    result = await use_case.delete_audio_file("user123/nonexistent.wav", "user123")
+    result = await use_case.delete_audio_file("user123", "user123/nonexistent.wav")
     
     assert result.deleted is False
     assert result.embedding_removed is False
@@ -289,15 +289,15 @@ async def test_audio_management_delete_with_embedding_removal():
     mock_user_repository.get_by_id.return_value = None
     
     with pytest.raises(ValueError, match="User user123 not found"):
-        await use_case.delete_audio_file("user123/sample1.wav", "user123")
+        await use_case.delete_audio_file("user123", "user123/sample1.wav")
     
     # Test 5: Empty user_id
     with pytest.raises(ValueError, match="User ID cannot be empty"):
-        await use_case.delete_audio_file("user123/sample1.wav", "")
+        await use_case.delete_audio_file("", "user123/sample1.wav")
     
     # Test 6: Empty file_path
     with pytest.raises(ValueError, match="File path cannot be empty"):
-        await use_case.delete_audio_file("", "user123")
+        await use_case.delete_audio_file("user123", "")
 
 
 @pytest.mark.asyncio

@@ -9,9 +9,10 @@ import json
 import uuid
 import base64
 from app.infrastructure.config.infrastructure_settings import infra_settings
+from app.infrastructure.config.aws_config import aws_config
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
 
-BASE_URL = infra_settings.audio_base_url
+BASE_URL = aws_config.get_api_base_url()
 
 @pytest.fixture(scope="module")
 def user_repository():

@@ -96,10 +96,15 @@ def test_example_user_structure():
     assert isinstance(embeddings, list)
     assert len(embeddings) == 3
     for embedding in embeddings:
-        assert 'audio_path' in embedding
-        assert 'embedding_vector' in embedding
-        assert 'generated_at' in embedding
-        audio_path = embedding['audio_path']
+        assert 'embedding' in embedding 
+        assert 'created_at' in embedding
+        assert 'audio_metadata' in embedding
+        assert 'file_name' in embedding['audio_metadata']
+        assert 'processed_at' in embedding['audio_metadata']
+        
+        user_id = example['user_id']
+        file_name = embedding['audio_metadata']['file_name']
+        audio_path = f"{user_id}/{file_name}"
         assert not audio_path.startswith('http')
         assert not audio_path.startswith('s3://')
         assert '/' in audio_path

@@ -5,7 +5,7 @@ Handles connection to DynamoDB and S3 with environment-specific settings.
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .infrastructure_settings import infra_settings
 
 
@@ -170,6 +170,17 @@ class AWSConfig:
         path = audio_path.lstrip('/')
         return base_url + path
     
+    def get_api_base_url(self) -> str:
+        """
+        Get API base URL for HTTP requests.
+        
+        Returns:
+            Full API URL like 'http://localhost:8080' or 'https://api.example.com'
+        """
+        protocol = "https" if infra_settings.is_production else infra_settings.app_protocol
+        port_suffix = f":{infra_settings.app_port}" if infra_settings.app_port not in [80, 443] else ""
+        return f"{protocol}://{infra_settings.app_host}{port_suffix}"
+    
     def get_s3_config(self) -> dict:
         """
         Get S3 configuration for boto3 client.
@@ -191,6 +202,15 @@ class AWSConfig:
             })
         
         return config
+    
+    def get_supported_audio_formats(self) -> List[str]:
+        """
+        Get supported audio formats from configuration.
+        
+        Returns:
+            List of supported audio format strings
+        """
+        return infra_settings.supported_audio_formats
 
 
 # Global AWS configuration instance

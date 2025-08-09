@@ -3,7 +3,7 @@ Infrastructure settings for Voice Gateway.
 Configuration for external services, databases, and storage systems.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, List
 
 
 class InfrastructureSettings(BaseSettings):
@@ -16,6 +16,11 @@ class InfrastructureSettings(BaseSettings):
     environment: str = "development"
     stage: str = "dev"
     is_production: bool = False
+    
+    # API CONFIGURATION
+    app_host: str = "localhost"
+    app_port: int = 8080
+    app_protocol: str = "http"
     
     # AWS CORE CONFIGURATION
     aws_region: str
@@ -42,7 +47,7 @@ class InfrastructureSettings(BaseSettings):
     audio_download_expiration_minutes: int = 60
     
     # AUDIO PROCESSING CONFIGURATION
-    supported_audio_formats: list = ["wav", "mp3", "m4a", "flac"]
+    supported_audio_formats: List[str] = ["wav", "mp3", "m4a", "flac"]
     max_audio_file_size_mb: int = 10
     required_audio_samples: int = 3
     processing_timeout_seconds: int = 180
@@ -90,7 +95,7 @@ class InfrastructureSettings(BaseSettings):
     
     # Configuration
     model_config = SettingsConfigDict(
-        env_file=[".env.local", ".env.development", ".env.staging", ".env.production"],
+        env_file=[".env.local", ".env.development", ".env.staging", ".env.production", ".env"],
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"

@@ -19,8 +19,9 @@ from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepos
 from app.core.services.password_service import PasswordService
 from app.core.models.user import User
 from app.infrastructure.config.infrastructure_settings import infra_settings
+from app.infrastructure.config.aws_config import aws_config
 
-BASE_URL = infra_settings.audio_base_url
+BASE_URL = aws_config.get_api_base_url()
 
 @pytest.fixture(scope="function")
 def integration_test_context():

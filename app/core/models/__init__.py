@@ -5,7 +5,8 @@ from .user import (
     User,
     UserProfile,
     UserList,
-    UserAuthenticationStatus
+    UserAuthenticationStatus,
+    UserRegistrationStatus
 )
 
 from .audio import (
@@ -29,6 +30,7 @@ __all__ = [
     "UserProfile",
     "UserList",
     "UserAuthenticationStatus",
+    "UserRegistrationStatus",
     "AudioFormat",
     "AudioUploadRequest",
     "AudioUploadResponse",
