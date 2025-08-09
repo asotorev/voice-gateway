@@ -5,6 +5,7 @@ Tests file validation including format, size, security checks,
 and content validation.
 """
 import pytest
+import threading
 from unittest.mock import patch
 from utils.file_validator import AudioFileValidator
 
@@ -91,11 +92,17 @@ class TestAudioFileValidator:
     
     def test_validate_wav_header_success(self, sample_file_metadata):
         """Test validation of valid WAV file header."""
-        # Create valid WAV header
-        wav_data = b'RIFF' + (1000).to_bytes(4, 'little') + b'WAVE'
+        # Create valid WAV header with sufficient size
+        wav_data = b'RIFF' + (2000).to_bytes(4, 'little') + b'WAVE'
         wav_data += b'fmt ' + (16).to_bytes(4, 'little')
-        wav_data += b'data' + (500).to_bytes(4, 'little')
-        wav_data += b'\x00' * 500
+        wav_data += (1).to_bytes(2, 'little')  # PCM format
+        wav_data += (1).to_bytes(2, 'little')  # mono
+        wav_data += (44100).to_bytes(4, 'little')  # sample rate
+        wav_data += (88200).to_bytes(4, 'little')  # byte rate
+        wav_data += (2).to_bytes(2, 'little')  # block align
+        wav_data += (16).to_bytes(2, 'little')  # bits per sample
+        wav_data += b'data' + (1500).to_bytes(4, 'little')
+        wav_data += b'\x00' * 1500  # Audio data
         
         result = self.validator.validate_file(wav_data, sample_file_metadata)
         
@@ -105,33 +112,33 @@ class TestAudioFileValidator:
     def test_validate_wav_header_mismatch(self, sample_file_metadata):
         """Test validation of file with mismatched header."""
         # Create MP3-like header but with .wav extension
-        mp3_data = b'ID3' + b'\x03\x00\x00\x00' + b'\x00' * 1000
+        mp3_data = b'ID3' + b'\x03\x00\x00\x00' + b'\x00' * 2000  # Make it large enough
         
         result = self.validator.validate_file(mp3_data, sample_file_metadata)
         
-        # Should still be valid but with warnings
-        assert result['is_valid'] is True
-        assert len(result['warnings']) > 0
+        # Should fail validation due to header mismatch
+        assert result['is_valid'] is False
+        assert any('header' in failure.lower() for failure in result['validation_failed'])
     
     def test_security_check_executable_signature(self, sample_file_metadata):
         """Test security check for executable signatures."""
-        # Create data with Windows PE signature
-        malicious_data = b'MZ' + b'\x00' * 1000
+        # Create data with Windows PE signature and sufficient size
+        malicious_data = b'MZ' + b'\x00' * 2000  # Make it large enough to pass size validation
         
         result = self.validator.validate_file(malicious_data, sample_file_metadata)
         
         assert result['is_valid'] is False
-        assert any('executable signature' in failure.lower() for failure in result['validation_failed'])
+        assert any('malicious patterns detected' in failure.lower() for failure in result['validation_failed'])
     
     def test_security_check_script_patterns(self, sample_file_metadata):
         """Test security check for script patterns."""
-        # Create data with script tag
-        script_data = b'<script>alert("test")</script>' + b'\x00' * 1000
+        # Create data with script tag and sufficient size
+        script_data = b'<script>alert("test")</script>' + b'\x00' * 2000  # Make it large enough to pass size validation
         
         result = self.validator.validate_file(script_data, sample_file_metadata)
         
         assert result['is_valid'] is False
-        assert any('script pattern' in failure.lower() for failure in result['validation_failed'])
+        assert any('malicious patterns detected' in failure.lower() for failure in result['validation_failed'])
     
     def test_validate_file_exception_handling(self, sample_file_metadata):
         """Test validator exception handling."""
@@ -183,8 +190,9 @@ class TestAudioFileValidator:
         """Test file size validation with edge cases."""
         metadata = {'file_name': 'test.wav', 'content_type': 'audio/wav'}
         
-        # Test exactly at minimum size
-        min_size_data = b'\x00' * self.validator.min_file_size
+        # Test exactly at minimum size with valid WAV header
+        wav_header = b'RIFF' + (self.validator.min_file_size - 8).to_bytes(4, 'little') + b'WAVE'
+        min_size_data = wav_header + b'\x00' * (self.validator.min_file_size - len(wav_header))
         result = self.validator.validate_file(min_size_data, metadata)
         assert result['is_valid'] is True
         
@@ -195,8 +203,6 @@ class TestAudioFileValidator:
     
     def test_concurrent_validation(self, sample_audio_data, sample_file_metadata):
         """Test that validator handles concurrent validation calls."""
-        import threading
-        
         results = []
         errors = []
         

@@ -6,8 +6,9 @@ error handling, and response formatting.
 """
 import pytest
 import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from handler import lambda_handler, process_single_audio_file, extract_user_id_from_key
+from .conftest import create_handler_mocks
 
 
 @pytest.mark.unit
@@ -16,14 +17,18 @@ class TestLambdaHandler:
     
     def test_lambda_handler_success(self, mock_s3_event, mock_lambda_context):
         """Test successful Lambda handler execution."""
-        with patch('handler.S3EventParser') as mock_parser, \
-             patch('handler.process_single_audio_file') as mock_process:
+        # Get centralized handler mocks
+        handler_mocks = create_handler_mocks()
+        
+        with patch.multiple('handler', 
+                          S3EventParser=handler_mocks['S3EventParser'],
+                          process_single_audio_file=handler_mocks['process_single_audio_file']):
             
             # Setup mocks
-            mock_parser.return_value.parse_event.return_value = [
+            handler_mocks['S3EventParser'].return_value.parse_event.return_value = [
                 {'bucket': 'test-bucket', 'key': 'audio-uploads/user123/sample1.wav', 'size': 1048576}
             ]
-            mock_process.return_value = {
+            handler_mocks['process_single_audio_file'].return_value = {
                 'bucket': 'test-bucket',
                 'key': 'audio-uploads/user123/sample1.wav',
                 'user_id': 'user123',
@@ -44,8 +49,11 @@ class TestLambdaHandler:
     
     def test_lambda_handler_no_events(self, mock_lambda_context):
         """Test Lambda handler with no valid S3 events."""
-        with patch('handler.S3EventParser') as mock_parser:
-            mock_parser.return_value.parse_event.return_value = []
+        # Get centralized handler mocks
+        handler_mocks = create_handler_mocks()
+        
+        with patch('handler.S3EventParser', handler_mocks['S3EventParser']):
+            handler_mocks['S3EventParser'].return_value.parse_event.return_value = []
             
             result = lambda_handler({}, mock_lambda_context)
             
@@ -55,13 +63,17 @@ class TestLambdaHandler:
     
     def test_lambda_handler_processing_failure(self, mock_s3_event, mock_lambda_context):
         """Test Lambda handler with processing failure."""
-        with patch('handler.S3EventParser') as mock_parser, \
-             patch('handler.process_single_audio_file') as mock_process:
+        # Get centralized handler mocks
+        handler_mocks = create_handler_mocks()
+        
+        with patch.multiple('handler', 
+                          S3EventParser=handler_mocks['S3EventParser'],
+                          process_single_audio_file=handler_mocks['process_single_audio_file']):
             
-            mock_parser.return_value.parse_event.return_value = [
+            handler_mocks['S3EventParser'].return_value.parse_event.return_value = [
                 {'bucket': 'test-bucket', 'key': 'audio-uploads/user123/sample1.wav', 'size': 1048576}
             ]
-            mock_process.side_effect = ValueError("File validation failed")
+            handler_mocks['process_single_audio_file'].side_effect = ValueError("File validation failed")
             
             result = lambda_handler(mock_s3_event, mock_lambda_context)
             
@@ -96,10 +108,11 @@ class TestProcessSingleAudioFile:
         
         mock_pipeline_result = {
             'success': True,
-            'embedding_stage': {'status': 'success'},
-            'completion_stage': {'is_complete': False},
+            'registration_complete': False,
             'processing_time_ms': 1500,
-            'processing_stages': {},
+            'processing_stages': {
+                'generate_embedding': {'status': 'success'}
+            },
             'completion_response': None,
             'progress_response': {'message': 'Sample recorded'},
             'error_details': None
@@ -216,8 +229,7 @@ class TestHandlerIntegration:
             mock_pipeline_class.return_value = mock_pipeline
             mock_pipeline.process_s3_event.return_value = {
                 'success': True,
-                'embedding_stage': {'status': 'success'},
-                'completion_stage': {'is_complete': True},
+                'registration_complete': True,
                 'processing_time_ms': 2000,
                 'processing_stages': {
                     'extract_user_id': {'status': 'success'},

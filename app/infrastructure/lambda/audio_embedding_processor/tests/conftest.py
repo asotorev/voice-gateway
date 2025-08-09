@@ -8,7 +8,7 @@ import os
 import pytest
 import json
 from typing import Dict, Any, List
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from datetime import datetime, timezone
 
 # Set test environment variables
@@ -19,6 +19,9 @@ os.environ['MAX_AUDIO_FILE_SIZE_MB'] = '10'
 os.environ['SUPPORTED_AUDIO_FORMATS'] = 'wav,mp3,m4a,flac'
 os.environ['REQUIRED_AUDIO_SAMPLES'] = '3'
 os.environ['MIN_VOICE_QUALITY_SCORE'] = '0.7'
+os.environ['S3_BUCKET_NAME'] = 'test-voice-uploads'
+os.environ['USERS_TABLE_NAME'] = 'UsersTest'
+os.environ['VOICE_EMBEDDING_DIMENSIONS'] = '256'
 
 
 @pytest.fixture
@@ -94,7 +97,7 @@ def mock_user_data():
         'voice_embeddings': [
             {
                 'audio_path': 'user123/sample1.wav',
-                'embedding_vector': [0.1] * 256,
+                'embedding': [0.1] * 256,
                 'generated_at': '2024-01-15T10:30:00.000Z',
                 'audio_metadata': {
                     'quality_score': 0.85,
@@ -111,15 +114,20 @@ def mock_user_data():
 @pytest.fixture
 def mock_s3_client():
     """Mock S3 client for testing."""
-    mock_client = MagicMock()
+    mock_client = Mock()
     
     # Mock successful download
     mock_client.download_fileobj.return_value = None
-    mock_client.head_object.return_value = {
-        'ContentLength': 1048576,
-        'ContentType': 'audio/wav',
-        'LastModified': datetime.now(timezone.utc)
-    }
+    
+    # Create proper mock response with correct types
+    def mock_head_object(*args, **kwargs):
+        return {
+            'ContentLength': 1048576,  # Always return int
+            'ContentType': 'audio/wav',
+            'LastModified': datetime.now(timezone.utc)  # Always return datetime
+        }
+    
+    mock_client.head_object.side_effect = mock_head_object
     
     return mock_client
 
@@ -127,7 +135,7 @@ def mock_s3_client():
 @pytest.fixture
 def mock_dynamodb_client():
     """Mock DynamoDB client for testing."""
-    mock_client = MagicMock()
+    mock_client = Mock()
     
     # Mock successful operations
     mock_client.get_item.return_value = {
@@ -215,7 +223,7 @@ class MockBotoClient:
         """Return mock response for any method call."""
         if name in self._responses:
             return lambda **kwargs: self._responses[name]
-        return MagicMock()
+        return Mock()
 
 
 @pytest.fixture
@@ -230,3 +238,105 @@ def mock_boto_session():
 pytest.mark.unit = pytest.mark.unit
 pytest.mark.integration = pytest.mark.integration
 pytest.mark.aws = pytest.mark.aws
+
+
+def create_mock_getenv(processor_type='mock', dimensions='256'):
+    """
+    Helper function to create mock getenv for testing audio processor configuration.
+    
+    Args:
+        processor_type: Type of processor to mock ('mock', 'resemblyzer', etc.)
+        dimensions: Number of embedding dimensions as string
+        
+    Returns:
+        Function that can be used as side_effect for os.getenv mock
+    """
+    def mock_getenv(key, default=None):
+        if key == 'EMBEDDING_PROCESSOR_TYPE':
+            return processor_type
+        elif key == 'VOICE_EMBEDDING_DIMENSIONS':
+            return dimensions
+        return default
+    return mock_getenv
+
+
+def create_pipeline_mocks():
+    """
+    Helper function to create all pipeline mocks in one place.
+    
+    Returns:
+        Dict with all pipeline mock objects
+    """
+    mocks = {
+        's3_operations': Mock(),
+        'dynamodb_operations': Mock(),
+        'process_audio_file': Mock(),
+        'audio_file_validator': Mock(),
+        'completion_checker': Mock(),
+        'user_status_manager': Mock(),
+        'notification_handler': Mock()
+    }
+    
+    return mocks
+
+
+def create_handler_mocks():
+    """
+    Helper function to create all handler mocks in one place.
+    
+    Returns:
+        Dict with all handler mock objects
+    """
+    mocks = {
+        'S3EventParser': Mock(),
+        'process_single_audio_file': Mock(),
+        'extract_user_id_from_key': Mock(),
+        'AudioProcessingPipeline': Mock()
+    }
+    
+    return mocks
+
+
+def create_s3_client_mock():
+    """
+    Helper function to create a properly configured S3 client mock.
+    
+    Returns:
+        Mock S3 client with common configurations
+    """
+    mock_client = Mock()
+    
+    # Default head_object response
+    mock_client.head_object.return_value = {
+        'ContentLength': 1048576,
+        'ContentType': 'audio/wav',
+        'LastModified': datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        'ETag': '"abc123"'
+    }
+    
+    # Default get_object response with proper mock body
+    mock_body = Mock()
+    mock_body.read.return_value = b'fake_audio_data'
+    mock_client.get_object.return_value = {
+        'Body': mock_body,
+        'ContentType': 'audio/wav'
+    }
+    
+    return mock_client
+
+
+def create_resemblyzer_mocks():
+    """
+    Helper function to create Resemblyzer-related mocks.
+    
+    Returns:
+        Dict with Resemblyzer mock objects
+    """
+    mocks = {
+        'VoiceEncoder': Mock(),
+        'preprocess_wav': Mock(),
+        'librosa': Mock(),
+        'soundfile': Mock()
+    }
+    
+    return mocks

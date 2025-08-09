@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from botocore.exceptions import ClientError
-from ..utils.aws_lambda_config import aws_lambda_config_manager
+from utils.aws_lambda_config import aws_lambda_config_manager
 
 logger = logging.getLogger(__name__)
 

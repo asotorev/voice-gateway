@@ -21,6 +21,7 @@ provider:
     PROCESSING_TIMEOUT_SECONDS: ${env:PROCESSING_TIMEOUT_SECONDS, '180'}
     LAMBDA_MAX_RETRIES: ${env:LAMBDA_MAX_RETRIES, '3'}
     VOICE_EMBEDDING_DIMENSIONS: ${env:VOICE_EMBEDDING_DIMENSIONS, '256'}
+    EMBEDDING_PROCESSOR_TYPE: ${env:EMBEDDING_PROCESSOR_TYPE, 'mock'}
 
   iam:
     role:
@@ -78,8 +79,15 @@ functions:
             - suffix: .m4a
 
     layers:
-      # Will be added in later commits
+      # ML dependencies layer (for production optimization)
       # - ${cf:voice-gateway-layers-${self:provider.stage}.AudioMLLayerArn}
+      #
+      # To create ML layer:
+      # 1. Create separate layer with torch, librosa, resemblyzer
+      # 2. Deploy layer stack first: cd layers && serverless deploy
+      # 3. Uncomment layer reference above
+      #
+      # For now, dependencies are packaged with function
 
 plugins:
   - serverless-python-requirements

@@ -10,7 +10,7 @@ import logging
 import tempfile
 from typing import Optional, Dict, Any, BinaryIO
 from botocore.exceptions import ClientError
-from ..utils.aws_lambda_config import aws_lambda_config_manager
+from utils.aws_lambda_config import aws_lambda_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -281,15 +281,15 @@ class S3AudioOperations:
             # Remove trigger prefix if present
             trigger_prefix = os.getenv('S3_TRIGGER_PREFIX', 'audio-uploads/')
             
-            if s3_key.startswith(trigger_prefix):
-                path_after_prefix = s3_key[len(trigger_prefix):]
-            else:
-                path_after_prefix = s3_key
+            if not s3_key.startswith(trigger_prefix):
+                raise ValueError("Key does not start with expected prefix")
+            
+            path_after_prefix = s3_key[len(trigger_prefix):]
             
             # Extract user_id (first path component)
             path_parts = path_after_prefix.split('/')
             if not path_parts or not path_parts[0]:
-                raise ValueError("Cannot extract user_id from key format")
+                raise ValueError("Could not extract user_id from key format")
             
             user_id = path_parts[0]
             
@@ -300,6 +300,9 @@ class S3AudioOperations:
             
             return user_id
             
+        except ValueError:
+            # Re-raise ValueError exceptions as-is
+            raise
         except Exception as e:
             logger.error("Failed to extract user_id from S3 key", extra={
                 "s3_key": s3_key,
@@ -329,6 +332,7 @@ class S3AudioOperations:
                 'size_bytes': metadata['size'],
                 'size_mb': round(metadata['size'] / (1024 * 1024), 2),
                 'last_modified': metadata['last_modified'],
+                'content_type': metadata['content_type'],
                 'is_valid': validation['is_valid'],
                 'validation_errors': validation['errors'],
                 'validation_warnings': validation['warnings']

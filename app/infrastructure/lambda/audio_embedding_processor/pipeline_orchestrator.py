@@ -14,11 +14,12 @@ from datetime import datetime, timezone
 # Import pipeline components
 from services.s3_operations import s3_operations
 from services.dynamodb_operations import dynamodb_operations
-from utils.audio_processor import process_audio_file
+from utils.audio_processor import process_audio_file, get_audio_processor
 from utils.file_validator import audio_file_validator
 from utils.user_status_manager import user_status_manager
 from utils.completion_checker import completion_checker
 from utils.notification_handler import notification_handler
+from utils.aws_lambda_config import aws_lambda_config_manager as aws_client_manager
 
 logger = logging.getLogger(__name__)
 
@@ -364,9 +365,6 @@ class AudioProcessingPipeline:
                     'registration_score': completion_analysis['registration_score'],
                     'total_samples': progress_analysis['progress_metrics']['samples_collected']
                 })
-                
-                # Store completion response for Lambda return
-                enhanced_result['completion_response'] = completion_response
             
             # Create progress response for non-completed registrations
             if not completion_analysis['is_complete']:
@@ -447,11 +445,9 @@ class AudioProcessingPipeline:
         """
         try:
             # Test AWS connections
-            from utils.aws_lambda_config import aws_lambda_config_manager as aws_client_manager
             aws_health = aws_client_manager.test_connections()
             
             # Test processor
-            from utils.audio_processor import get_audio_processor
             processor = get_audio_processor()
             processor_info = processor.get_processor_info()
             

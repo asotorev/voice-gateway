@@ -6,9 +6,16 @@ botocore>=1.31.0,<2.0.0
 # JSON and HTTP utilities
 requests>=2.28.0,<3.0.0
 
-# Audio processing dependencies (for future ML integration)
-# These will be moved to Lambda layers in later commits
+# Audio processing dependencies for ML integration
 numpy>=1.21.0,<2.0.0
+
+# Resemblyzer and audio processing
+resemblyzer>=0.1.1
+torch>=1.9.0,<2.0.0
+librosa>=0.9.0,<1.0.0
+scipy>=1.7.0,<2.0.0
+soundfile>=0.10.0
+webrtcvad>=2.0.10
 
 # Logging and utilities
 structlog>=22.1.0,<24.0.0

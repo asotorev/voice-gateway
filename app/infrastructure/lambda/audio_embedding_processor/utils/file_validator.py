@@ -8,8 +8,9 @@ only valid audio files are processed by the embedding generation pipeline.
 import os
 import logging
 import tempfile
+import time
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class AudioFileValidator:
             'file_info': {},
             'security_checks': {},
             'content_analysis': {},
-            'validated_at': datetime.utcnow().isoformat()
+            'validated_at': datetime.now(timezone.utc).isoformat()
         }
         
         try:
@@ -182,7 +183,7 @@ class AudioFileValidator:
             if header_match:
                 result['validation_passed'].append("File header validation")
             else:
-                result['warnings'].append(f"File header doesn't match expected {file_extension} format")
+                result['validation_failed'].append(f"File header doesn't match expected {file_extension} format")
         else:
             result['warnings'].append(f"No header validation available for {file_extension} format")
         
@@ -190,6 +191,12 @@ class AudioFileValidator:
     
     def _validate_file_content(self, audio_data: bytes, result: Dict[str, Any]) -> None:
         """Perform basic content validation."""
+        # If file is empty, avoid further calculations that may divide by zero
+        if len(audio_data) == 0:
+            result['content_analysis']['null_byte_percentage'] = 0.0
+            result['warnings'].append("Empty audio content")
+            return
+
         # Check for suspiciously uniform data (could indicate corruption or not audio)
         if len(audio_data) > 1000:
             sample = audio_data[:1000]
@@ -257,7 +264,7 @@ class AudioFileValidator:
         
         result['security_checks'] = security_result
         
-        if security_result['malicious_patterns']:
+        if security_result['malicious_patterns'] or security_result['suspicious_characteristics']:
             result['validation_failed'].append("Security validation failed - malicious patterns detected")
         elif security_result['security_score'] < 70:
             result['warnings'].append(f"Low security score: {security_result['security_score']}")
@@ -441,7 +448,6 @@ class AudioFileValidator:
                     })
                     
                     # Brief delay before retry (exponential backoff)
-                    import time
                     time.sleep(0.1 * (2 ** attempt))
         
         # Should not reach here, but safety fallback
@@ -473,7 +479,7 @@ class AudioFileValidator:
                 'error_message': error_message,
                 'recoverable': recoverable
             },
-            'validated_at': datetime.utcnow().isoformat()
+            'validated_at': datetime.now(timezone.utc).isoformat()
         }
 
 

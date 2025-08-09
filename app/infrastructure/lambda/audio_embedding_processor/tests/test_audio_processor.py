@@ -12,6 +12,7 @@ from utils.audio_processor import (
     get_audio_processor,
     process_audio_file
 )
+from .conftest import create_mock_getenv
 
 
 @pytest.mark.unit
@@ -26,7 +27,7 @@ class TestMockAudioProcessor:
         """Test MockAudioProcessor initialization."""
         processor = MockAudioProcessor()
         
-        assert processor.embedding_dimension == 256
+        assert processor.embedding_dimensions == 256
         assert processor.processor_version == "mock-1.0.0"
     
     def test_generate_embedding_success(self, sample_audio_data, sample_file_metadata):
@@ -40,7 +41,7 @@ class TestMockAudioProcessor:
     
     def test_generate_embedding_empty_data(self, sample_file_metadata):
         """Test embedding generation with empty audio data."""
-        with pytest.raises(ValueError, match="Audio data cannot be empty"):
+        with pytest.raises(RuntimeError, match="Mock embedding generation failed: Audio data is empty"):
             self.processor.generate_embedding(b'', sample_file_metadata)
     
     def test_generate_embedding_deterministic(self, sample_audio_data, sample_file_metadata):
@@ -99,7 +100,7 @@ class TestMockAudioProcessor:
         assert info['processor_type'] == 'mock'
         assert info['processor_name'] == 'MockAudioProcessor'
         assert info['processor_version'] == 'mock-1.0.0'
-        assert info['embedding_dimension'] == 256
+        assert info['embedding_dimensions'] == 256
         assert 'capabilities' in info
         assert 'limitations' in info
 
@@ -119,22 +120,20 @@ class TestResemblyzerAudioProcessor:
         assert processor.processor_version == "resemblyzer-1.0.0"
     
     def test_generate_embedding_fallback_to_mock(self, sample_audio_data, sample_file_metadata):
-        """Test that embedding generation falls back to mock."""
-        with patch.object(self.processor, '_log_resemblyzer_not_implemented'):
-            embedding = self.processor.generate_embedding(sample_audio_data, sample_file_metadata)
-            
-            # Should return mock-style embedding
-            assert isinstance(embedding, list)
-            assert len(embedding) == 256
+        """Test that embedding generation works with Resemblyzer."""
+        embedding = self.processor.generate_embedding(sample_audio_data, sample_file_metadata)
+        
+        # Should return embedding from Resemblyzer
+        assert isinstance(embedding, list)
+        assert len(embedding) == 256
     
     def test_validate_audio_quality_fallback_to_mock(self, sample_audio_data, sample_file_metadata):
-        """Test that quality validation falls back to mock."""
-        with patch.object(self.processor, '_log_resemblyzer_not_implemented'):
-            result = self.processor.validate_audio_quality(sample_audio_data, sample_file_metadata)
-            
-            # Should return mock-style result
-            assert isinstance(result, dict)
-            assert 'overall_quality_score' in result
+        """Test that quality validation works with Resemblyzer."""
+        result = self.processor.validate_audio_quality(sample_audio_data, sample_file_metadata)
+        
+        # Should return quality assessment from Resemblyzer
+        assert isinstance(result, dict)
+        assert 'overall_quality_score' in result
     
     def test_get_processor_info(self):
         """Test processor info for Resemblyzer."""
@@ -142,7 +141,7 @@ class TestResemblyzerAudioProcessor:
         
         assert info['processor_type'] == 'resemblyzer'
         assert info['processor_name'] == 'ResemblyzerAudioProcessor'
-        assert info['status'] == 'not_implemented'
+        assert info['status'] == 'active'
 
 
 @pytest.mark.unit
@@ -151,14 +150,14 @@ class TestGetAudioProcessor:
     
     def test_get_audio_processor_mock(self):
         """Test getting mock audio processor."""
-        with patch('os.getenv', return_value='mock'):
+        with patch('os.getenv', side_effect=create_mock_getenv('mock', '256')):
             processor = get_audio_processor()
             
             assert isinstance(processor, MockAudioProcessor)
     
     def test_get_audio_processor_resemblyzer(self):
         """Test getting Resemblyzer processor (falls back to mock)."""
-        with patch('os.getenv', return_value='resemblyzer'):
+        with patch('os.getenv', side_effect=create_mock_getenv('resemblyzer', '256')):
             processor = get_audio_processor()
             
             # Currently returns ResemblyzerAudioProcessor which falls back to mock
@@ -166,14 +165,14 @@ class TestGetAudioProcessor:
     
     def test_get_audio_processor_default(self):
         """Test getting default processor."""
-        with patch('os.getenv', return_value=''):
+        with patch('os.getenv', side_effect=create_mock_getenv('', '256')):
             processor = get_audio_processor()
             
             assert isinstance(processor, MockAudioProcessor)
     
     def test_get_audio_processor_invalid_type(self):
         """Test getting processor with invalid type."""
-        with patch('os.getenv', return_value='invalid_type'):
+        with patch('os.getenv', side_effect=create_mock_getenv('invalid_type', '256')):
             processor = get_audio_processor()
             
             # Should default to mock
@@ -209,7 +208,7 @@ class TestProcessAudioFile:
         # Check audio analysis
         audio_analysis = result['audio_analysis']
         assert 'file_size_bytes' in audio_analysis
-        assert 'file_format' in audio_analysis
+        assert 'format' in audio_analysis
     
     def test_process_audio_file_empty_data(self, sample_file_metadata):
         """Test processing empty audio data."""
@@ -227,6 +226,7 @@ class TestProcessAudioFile:
             mock_processor = Mock()
             mock_processor.generate_embedding.return_value = [0.1] * 256
             mock_processor.validate_audio_quality.return_value = {
+                'is_valid': True,
                 'overall_quality_score': 0.85,
                 'snr_estimate': 25.5,
                 'voice_activity_ratio': 0.92,

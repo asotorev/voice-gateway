@@ -27,7 +27,6 @@ except ImportError:
     
     infra_settings = MockSettings()
 
-import logging
 logger = logging.getLogger(__name__)
 
 
