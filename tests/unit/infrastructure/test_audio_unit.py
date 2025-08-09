@@ -203,6 +203,126 @@ async def test_audio_file_deletion(infrastructure_helpers):
 
 
 @pytest.mark.asyncio
+async def test_audio_management_delete_with_embedding_removal():
+    """Unit test: AudioManagementUseCase delete_audio_file with embedding removal."""
+    from app.core.usecases.audio_management import AudioManagementUseCase
+    from app.core.models.user import User
+    from app.core.models.audio import AudioDeleteResponse
+    from unittest.mock import AsyncMock, MagicMock
+    
+    # Create mock dependencies
+    mock_audio_storage = AsyncMock()
+    mock_user_repository = AsyncMock()
+    
+    # Create use case
+    use_case = AudioManagementUseCase(mock_audio_storage, mock_user_repository)
+    
+    # Mock user with voice embeddings
+    mock_user = MagicMock()
+    mock_user.voice_embeddings = [
+        {
+            'embedding': [0.1, 0.2, 0.3],
+            'audio_metadata': {'file_name': 'sample1.wav'},
+            'created_at': '2024-01-15T10:31:22.123Z'
+        },
+        {
+            'embedding': [0.4, 0.5, 0.6],
+            'audio_metadata': {'file_name': 'sample2.wav'},
+            'created_at': '2024-01-15T10:32:15.456Z'
+        },
+        {
+            'embedding': [0.7, 0.8, 0.9],
+            'audio_metadata': {'file_name': 'sample3.wav'},
+            'created_at': '2024-01-15T10:33:01.789Z'
+        }
+    ]
+    
+    # Setup mocks
+    mock_user_repository.get_by_id.return_value = mock_user
+    mock_audio_storage.delete_audio_file.return_value = True
+    mock_user_repository.save = AsyncMock()
+    
+    # Test 1: Delete file that has corresponding embedding
+    result = await use_case.delete_audio_file("user123/sample2.wav", "user123")
+    
+    assert isinstance(result, AudioDeleteResponse)
+    assert result.deleted is True
+    assert result.embedding_removed is True
+    assert result.remaining_embeddings == 2
+    assert "embedding removed" in result.message
+    
+    # Verify embedding was removed from user
+    assert len(mock_user.voice_embeddings) == 2
+    assert not any(emb['audio_metadata']['file_name'] == 'sample2.wav' for emb in mock_user.voice_embeddings)
+    
+    # Verify user was saved
+    mock_user_repository.save.assert_called_once_with(mock_user)
+    
+    # Test 2: Delete file that doesn't have corresponding embedding
+    mock_audio_storage.delete_audio_file.return_value = True
+    mock_user_repository.save.reset_mock()
+    
+    result = await use_case.delete_audio_file("user123/nonexistent.wav", "user123")
+    
+    assert result.deleted is True
+    assert result.embedding_removed is False
+    assert result.remaining_embeddings == 2  # Still 2 from previous test
+    assert "embedding removed" not in result.message
+    
+    # Verify user was NOT saved (no embedding removed)
+    mock_user_repository.save.assert_not_called()
+    
+    # Test 3: Delete file that doesn't exist in S3
+    mock_audio_storage.delete_audio_file.return_value = False
+    mock_user_repository.save.reset_mock()
+    
+    result = await use_case.delete_audio_file("user123/nonexistent.wav", "user123")
+    
+    assert result.deleted is False
+    assert result.embedding_removed is False
+    assert result.remaining_embeddings == 2
+    
+    # Verify user was NOT saved (file not deleted)
+    mock_user_repository.save.assert_not_called()
+    
+    # Test 4: User not found
+    mock_user_repository.get_by_id.return_value = None
+    
+    with pytest.raises(ValueError, match="User user123 not found"):
+        await use_case.delete_audio_file("user123/sample1.wav", "user123")
+    
+    # Test 5: Empty user_id
+    with pytest.raises(ValueError, match="User ID cannot be empty"):
+        await use_case.delete_audio_file("user123/sample1.wav", "")
+    
+    # Test 6: Empty file_path
+    with pytest.raises(ValueError, match="File path cannot be empty"):
+        await use_case.delete_audio_file("", "user123")
+
+
+@pytest.mark.asyncio
+async def test_audio_management_delete_authorization():
+    """Unit test: AudioManagementUseCase delete_audio_file authorization."""
+    from app.core.usecases.audio_management import AudioManagementUseCase
+    from unittest.mock import AsyncMock, MagicMock
+    
+    # Create mock dependencies
+    mock_audio_storage = AsyncMock()
+    mock_user_repository = AsyncMock()
+    
+    # Create use case
+    use_case = AudioManagementUseCase(mock_audio_storage, mock_user_repository)
+    
+    # Mock user
+    mock_user = MagicMock()
+    mock_user_repository.get_by_id.return_value = mock_user
+    
+    # Test authorization failure - user trying to delete another user's file
+    with pytest.raises(ValueError, match="Access denied"):
+        await use_case.delete_audio_file("other_user/file.wav", "user123")
+
+
+@pytest.mark.asyncio
 async def test_audio_download_url(infrastructure_helpers):
     """Unit test: audio download URL generation."""
     service = infrastructure_helpers.create_mock_service()

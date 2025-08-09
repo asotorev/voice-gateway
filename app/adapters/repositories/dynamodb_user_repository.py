@@ -91,13 +91,13 @@ class DynamoDBUserRepository(UserRepositoryPort):
     
     async def get_by_id(self, user_id: str) -> Optional[User]:
         """
-        Get user by ID using primary key.
+        Get user by ID using primary key (returns complete user data).
         
         Args:
             user_id: User ID to search for
             
         Returns:
-            Optional[User]: User if found, None otherwise
+            Optional[User]: Complete user if found, None otherwise
         """
         try:
             response = self.table.get_item(
@@ -114,6 +114,87 @@ class DynamoDBUserRepository(UserRepositoryPort):
             raise Exception(f"Failed to get user by ID: {e.response['Error']['Message']}")
         except Exception as e:
             raise Exception(f"Unexpected error getting user by ID: {str(e)}")
+
+    async def get_profile_by_id(self, user_id: str) -> Optional[User]:
+        """
+        Get user data optimized for profile display.
+        
+        Args:
+            user_id: User ID to search for
+            
+        Returns:
+            Optional[User]: User with profile fields if found, None otherwise
+        """
+        try:
+            response = self.table.get_item(
+                Key={'user_id': user_id},
+                ProjectionExpression='user_id, name, email, created_at, voice_setup_complete'
+            )
+            
+            item = response.get('Item')
+            if not item:
+                return None
+                
+            return self._from_dynamodb_item(item)
+            
+        except ClientError as e:
+            raise Exception(f"Failed to get user profile: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error getting user profile: {str(e)}")
+
+    async def get_auth_status_by_id(self, user_id: str) -> Optional[User]:
+        """
+        Get user data optimized for authentication status.
+        
+        Args:
+            user_id: User ID to search for
+            
+        Returns:
+            Optional[User]: User with auth status fields if found, None otherwise
+        """
+        try:
+            response = self.table.get_item(
+                Key={'user_id': user_id},
+                ProjectionExpression='user_id, voice_setup_complete, voice_embeddings_count',
+            )
+            
+            item = response.get('Item')
+            if not item:
+                return None
+                
+            return self._from_dynamodb_item(item)
+            
+        except ClientError as e:
+            raise Exception(f"Failed to get user auth status: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error getting user auth status: {str(e)}")
+
+    async def get_registration_status_by_id(self, user_id: str) -> Optional[User]:
+        """
+        Get user data optimized for registration status.
+        
+        Args:
+            user_id: User ID to search for
+            
+        Returns:
+            Optional[User]: User with registration status fields if found, None otherwise
+        """
+        try:
+            response = self.table.get_item(
+                Key={'user_id': user_id},
+                ProjectionExpression='user_id, voice_embeddings_count, updated_at',
+            )
+            
+            item = response.get('Item')
+            if not item:
+                return None
+                
+            return self._from_dynamodb_item(item)
+            
+        except ClientError as e:
+            raise Exception(f"Failed to get user registration status: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error getting user registration status: {str(e)}")
     
     async def check_password_hash_exists(self, password_hash: str) -> bool:
         """
@@ -178,6 +259,10 @@ class DynamoDBUserRepository(UserRepositoryPort):
         if hasattr(user, 'voice_embeddings') and user.voice_embeddings:
             item['voice_embeddings'] = self._convert_floats_to_decimal(user.voice_embeddings)
         
+        # Add calculated fields if they exist (as dynamic attributes)
+        if hasattr(user, 'voice_embeddings_count'):
+            item['voice_embeddings_count'] = user.voice_embeddings_count
+        
         return item
     
     def _convert_floats_to_decimal(self, obj):
@@ -217,5 +302,9 @@ class DynamoDBUserRepository(UserRepositoryPort):
         # Add voice embeddings if they exist
         if 'voice_embeddings' in item:
             user.voice_embeddings = item['voice_embeddings']
+        
+        # Add calculated fields as dynamic attributes
+        if 'voice_embeddings_count' in item:
+            user.voice_embeddings_count = item['voice_embeddings_count']
         
         return user

@@ -150,6 +150,8 @@ class AudioDeleteResponse(BaseModel):
     file_path: str = Field(..., description="File path that was deleted")
     deleted: bool = Field(..., description="Whether deletion was successful")
     message: str = Field(..., description="Result message")
+    embedding_removed: bool = Field(default=False, description="Whether corresponding voice embedding was removed")
+    remaining_embeddings: int = Field(default=0, description="Number of voice embeddings remaining after deletion")
 
 
 class AudioInfoResponse(BaseModel):

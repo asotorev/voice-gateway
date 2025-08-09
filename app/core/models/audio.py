@@ -55,6 +55,8 @@ class AudioDeleteResponse:
     file_path: str
     deleted: bool
     message: str
+    embedding_removed: bool = False
+    remaining_embeddings: int = 0
 
 
 class AudioStorageError(Exception):

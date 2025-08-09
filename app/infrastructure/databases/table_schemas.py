@@ -28,10 +28,14 @@ class TableSchemas:
         - name: User's full name
         - email: User's email address (unique via GSI)
         - password_hash: SHA-256 hash of 2-word Spanish password (indexed for immediate lookup)
-        - voice_embeddings: Array of 3 embeddings, each containing:
-            * audio_path: Relative path (e.g., 'user123/sample1.wav')
-            * embedding_vector: 256-dimension vector from Resemblyzer
-            * generated_at: ISO timestamp of embedding generation
+        - voice_embeddings: Array of embeddings, each containing:
+            * embedding: 256-dimension vector from Resemblyzer
+            * created_at: ISO timestamp of embedding generation
+            * audio_metadata: Dict with file_name, file_size, processed_at
+        - voice_embeddings_count: Integer count of embeddings
+        - voice_setup_complete: Boolean indicating if voice setup is complete
+        - registration_complete: Boolean indicating if voice registration is complete
+        - registration_completed_at: ISO timestamp when registration was completed
         - created_at: ISO timestamp of user registration
         - updated_at: ISO timestamp of last modification
         - is_active: Boolean status for soft deletion
@@ -196,21 +200,37 @@ class TableSchemas:
             'password_hash': '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj3bp.gS8C.m',  # bcrypt hash (indexed for immediate lookup)
             'voice_embeddings': [
                 {
-                    'audio_path': 'user123/sample1.wav',        # Relative path
-                    'embedding_vector': [0.1, 0.2, 0.3],       # 256 dimensions (truncated)
-                    'generated_at': '2024-01-15T10:31:22.123Z'
+                    'embedding': [0.1, 0.2, 0.3],              # 256 dimensions (truncated)
+                    'created_at': '2024-01-15T10:31:22.123Z',
+                    'audio_metadata': {
+                        'file_name': 'sample1.wav',
+                        'file_size': 1024,
+                        'processed_at': '2024-01-15T10:31:22.123Z'
+                    }
                 },
                 {
-                    'audio_path': 'user123/sample2.wav',
-                    'embedding_vector': [0.4, 0.5, 0.6],
-                    'generated_at': '2024-01-15T10:32:15.456Z'
+                    'embedding': [0.4, 0.5, 0.6],
+                    'created_at': '2024-01-15T10:32:15.456Z',
+                    'audio_metadata': {
+                        'file_name': 'sample2.wav',
+                        'file_size': 1024,
+                        'processed_at': '2024-01-15T10:32:15.456Z'
+                    }
                 },
                 {
-                    'audio_path': 'user123/sample3.wav',
-                    'embedding_vector': [0.7, 0.8, 0.9],
-                    'generated_at': '2024-01-15T10:33:01.789Z'
+                    'embedding': [0.7, 0.8, 0.9],
+                    'created_at': '2024-01-15T10:33:01.789Z',
+                    'audio_metadata': {
+                        'file_name': 'sample3.wav',
+                        'file_size': 1024,
+                        'processed_at': '2024-01-15T10:33:01.789Z'
+                    }
                 }
             ],
+            'voice_embeddings_count': 3,                        
+            'voice_setup_complete': True,                       
+            'registration_complete': True,                      
+            'registration_completed_at': '2024-01-15T10:33:01.789Z',  
             'created_at': '2024-01-15T10:30:00.000Z',
             'updated_at': '2024-01-15T10:33:01.789Z',
             'is_active': True

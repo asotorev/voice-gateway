@@ -339,12 +339,14 @@ class AudioManagementUseCase:
         """
         Delete audio file with authorization and business validation.
         
+        Also removes corresponding voice embedding from user record if file was deleted.
+        
         Args:
             user_id: User identifier
             file_path: File path to delete
             
         Returns:
-            AudioDeleteResponse with deletion status
+            AudioDeleteResponse with deletion status and embedding update info
             
         Raises:
             ValueError: If validation fails
@@ -365,14 +367,35 @@ class AudioManagementUseCase:
         if not self._validate_user_permissions(user_id, file_path):
             raise ValueError("Access denied: Cannot access other user's files")
         
-        # DELEGATE to infrastructure
+        # DELEGATE to infrastructure - delete file from S3
         deleted = await self.audio_storage.delete_audio_file(file_path)
         
+        # BUSINESS LOGIC: Update embeddings if file was deleted
+        embedding_removed = False
+        if deleted and hasattr(user, 'voice_embeddings') and user.voice_embeddings:
+            # Find and remove embedding that corresponds to this file
+            original_count = len(user.voice_embeddings)
+            user.voice_embeddings = [
+                emb for emb in user.voice_embeddings 
+                if emb.get('audio_metadata', {}).get('file_name', '') not in file_path
+            ]
+            
+            # If embedding was removed, update user record
+            if len(user.voice_embeddings) < original_count:
+                embedding_removed = True
+                await self.user_repository.save(user)
+        
         # RETURN DOMAIN RESULT
+        message = "File deleted successfully"
+        if embedding_removed:
+            message += " and corresponding voice embedding removed"
+        
         return AudioDeleteResponse(
             file_path=file_path,
             deleted=deleted,
-            message="File deleted successfully" if deleted else "File not found"
+            message=message,
+            embedding_removed=embedding_removed,
+            remaining_embeddings=len(user.voice_embeddings) if hasattr(user, 'voice_embeddings') else 0
         )
     
     async def complete_voice_setup(self, user_id: str) -> bool:

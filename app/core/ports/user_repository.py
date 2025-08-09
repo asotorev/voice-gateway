@@ -11,8 +11,28 @@ class UserRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def get_by_id(self, user_id: str) -> Optional[User]:
+        """Get a user by ID (returns complete user data)."""
+        pass
+
+    @abstractmethod
     async def get_by_email(self, email: str) -> Optional[User]:
         """Get a user by email."""
+        pass
+
+    @abstractmethod
+    async def get_profile_by_id(self, user_id: str) -> Optional[User]:
+        """Get user data optimized for profile display."""
+        pass
+
+    @abstractmethod
+    async def get_auth_status_by_id(self, user_id: str) -> Optional[User]:
+        """Get user data optimized for authentication status."""
+        pass
+
+    @abstractmethod
+    async def get_registration_status_by_id(self, user_id: str) -> Optional[User]:
+        """Get user data optimized for registration status."""
         pass
 
     @abstractmethod

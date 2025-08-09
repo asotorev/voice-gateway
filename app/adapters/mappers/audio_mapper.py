@@ -47,7 +47,9 @@ class AudioResponseMapper:
         return AudioDeleteResponse(
             file_path=domain_result.file_path,
             deleted=domain_result.deleted,
-            message=domain_result.message
+            message=domain_result.message,
+            embedding_removed=domain_result.embedding_removed,
+            remaining_embeddings=domain_result.remaining_embeddings
         )
     
     @staticmethod

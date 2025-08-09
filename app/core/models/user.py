@@ -84,14 +84,24 @@ class UserList:
 
 @dataclass
 class UserAuthenticationStatus:
-    """Domain model for user authentication status."""
+    """Domain model for user authentication status and login capabilities."""
     user_id: str
-    name: str
-    email: str
-    registration_complete: bool
-    voice_setup_complete: bool
-    voice_samples_uploaded: int
-    voice_samples_required: int
-    next_action: str
+    account_status: str
     last_login: Optional[str]
-    account_status: str 
+    authentication_methods: Dict[str, bool]  # password_based, voice_based
+    can_login: bool
+    login_blocked_reason: Optional[str]
+
+
+@dataclass
+class UserRegistrationStatus:
+    """Domain model for user voice registration progress and status."""
+    user_id: str
+    status: str  # "not_started", "in_progress", "completed", "failed"
+    message: str
+    progress: Dict[str, Any]  # current, required, remaining, percentage
+    registration_complete: bool
+    next_action: str
+    registration_started_at: Optional[str]
+    registration_completed_at: Optional[str]
+    last_updated: Optional[str]
