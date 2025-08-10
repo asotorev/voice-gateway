@@ -5,11 +5,20 @@ This module provides pytest fixtures and configuration for testing the
 Lambda function components, including mocked AWS services and test data.
 """
 import os
+import sys
 import pytest
 import json
 from typing import Dict, Any, List
 from unittest.mock import Mock
 from datetime import datetime, timezone
+
+# Configure PYTHONPATH to include shared layer for testing
+shared_layer_path = os.path.join(os.path.dirname(__file__), '../../shared_layer/python')
+if os.path.exists(shared_layer_path) and shared_layer_path not in sys.path:
+    sys.path.insert(0, shared_layer_path)
+    print(f"Added shared layer to PYTHONPATH for testing: {shared_layer_path}")
+
+
 
 # Set test environment variables
 os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'

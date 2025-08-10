@@ -1,90 +1,126 @@
 """
-Unit tests for Lambda handler.
+Unit tests for Lambda handler using Clean Architecture.
 
 Tests the main entry point of the Lambda function including event parsing,
-error handling, and response formatting.
+error handling, response formatting, and delegation to the presentation layer.
 """
 import pytest
 import json
-from unittest.mock import Mock, patch
-from handler import lambda_handler, process_single_audio_file, extract_user_id_from_key
-from .conftest import create_handler_mocks
+import asyncio
+from unittest.mock import Mock, patch, AsyncMock
+
+# Import the handler function to test
+from handler import lambda_handler
 
 
 @pytest.mark.unit
 class TestLambdaHandler:
-    """Test cases for Lambda handler functionality."""
+    """Test cases for Clean Architecture Lambda handler functionality."""
     
     def test_lambda_handler_success(self, mock_s3_event, mock_lambda_context):
-        """Test successful Lambda handler execution."""
-        # Get centralized handler mocks
-        handler_mocks = create_handler_mocks()
+        """Test successful Lambda handler execution with Clean Architecture."""
         
-        with patch.multiple('handler', 
-                          S3EventParser=handler_mocks['S3EventParser'],
-                          process_single_audio_file=handler_mocks['process_single_audio_file']):
+        # Mock the presentation layer components
+        with patch('presentation.lambda_handler.S3EventParser') as mock_parser, \
+             patch('presentation.lambda_handler.RegistrationOrchestrator') as mock_orchestrator_class:
             
-            # Setup mocks
-            handler_mocks['S3EventParser'].return_value.parse_event.return_value = [
+            # Setup event parser mock
+            mock_parser.return_value.parse_event.return_value = [
                 {'bucket': 'test-bucket', 'key': 'audio-uploads/user123/sample1.wav', 'size': 1048576}
             ]
-            handler_mocks['process_single_audio_file'].return_value = {
-                'bucket': 'test-bucket',
-                'key': 'audio-uploads/user123/sample1.wav',
-                'user_id': 'user123',
-                'success': True,
-                'embedding_generated': True,
-                'registration_complete': False
-            }
             
-            # Execute
-            result = lambda_handler(mock_s3_event, mock_lambda_context)
+            # Setup orchestrator mock
+            mock_orchestrator = Mock()
+            mock_orchestrator_class.return_value = mock_orchestrator
             
-            # Verify
-            assert result['statusCode'] == 200
-            body = json.loads(result['body'])
-            assert body['processed_files'] == 1
-            assert body['failed_files'] == 0
-            assert len(body['results']) == 1
+            # Mock the async processing method
+            async def mock_process_audio(*args, **kwargs):
+                return {
+                    'bucket': 'test-bucket',
+                    'key': 'audio-uploads/user123/sample1.wav',
+                    'user_id': 'user123',
+                    'success': True,
+                    'embedding_dimensions': 256,
+                    'quality_score': 0.85,
+                    'user_embedding_count': 1,
+                    'registration_complete': False,
+                    'processing_time_ms': 1500,
+                    'processing_stages': {
+                        'extract_user_id': {'status': 'success'},
+                        'voice_processing': {'status': 'success'},
+                        'check_completion': {'status': 'success'}
+                    }
+                }
+            
+            # Mock asyncio.run to handle the async call properly
+            with patch('asyncio.run', side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+                mock_orchestrator.process_registration_audio = AsyncMock(side_effect=mock_process_audio)
+                
+                # Execute
+                result = lambda_handler(mock_s3_event, mock_lambda_context)
+                
+                # Verify response structure
+                assert result['statusCode'] == 200
+                body = json.loads(result['body'])
+                assert body['processed_files'] == 1
+                assert body['failed_files'] == 0
+                assert len(body['results']) == 1
+                
+                # Verify result details
+                processed_result = body['results'][0]
+                assert processed_result['success'] is True
+                assert processed_result['user_id'] == 'user123'
+                assert processed_result['embedding_dimensions'] == 256
+                assert processed_result['quality_score'] == 0.85
+                
+                # Verify orchestrator was called
+                mock_orchestrator.process_registration_audio.assert_called_once()
     
     def test_lambda_handler_no_events(self, mock_lambda_context):
         """Test Lambda handler with no valid S3 events."""
-        # Get centralized handler mocks
-        handler_mocks = create_handler_mocks()
         
-        with patch('handler.S3EventParser', handler_mocks['S3EventParser']):
-            handler_mocks['S3EventParser'].return_value.parse_event.return_value = []
+        with patch('presentation.lambda_handler.S3EventParser') as mock_parser:
+            mock_parser.return_value.parse_event.return_value = []
             
             result = lambda_handler({}, mock_lambda_context)
             
             assert result['statusCode'] == 200
             body = json.loads(result['body'])
             assert body['processed_files'] == 0
+            assert 'No valid S3 events to process' in body['message']
     
     def test_lambda_handler_processing_failure(self, mock_s3_event, mock_lambda_context):
         """Test Lambda handler with processing failure."""
-        # Get centralized handler mocks
-        handler_mocks = create_handler_mocks()
         
-        with patch.multiple('handler', 
-                          S3EventParser=handler_mocks['S3EventParser'],
-                          process_single_audio_file=handler_mocks['process_single_audio_file']):
+        with patch('presentation.lambda_handler.S3EventParser') as mock_parser, \
+             patch('presentation.lambda_handler.RegistrationOrchestrator') as mock_orchestrator_class:
             
-            handler_mocks['S3EventParser'].return_value.parse_event.return_value = [
+            mock_parser.return_value.parse_event.return_value = [
                 {'bucket': 'test-bucket', 'key': 'audio-uploads/user123/sample1.wav', 'size': 1048576}
             ]
-            handler_mocks['process_single_audio_file'].side_effect = ValueError("File validation failed")
             
-            result = lambda_handler(mock_s3_event, mock_lambda_context)
+            mock_orchestrator = Mock()
+            mock_orchestrator_class.return_value = mock_orchestrator
             
-            assert result['statusCode'] == 207  # Multi-Status
-            body = json.loads(result['body'])
-            assert body['failed_files'] == 1
-            assert len(body['errors']) == 1
+            # Mock async method to raise exception
+            async def mock_process_fail(*args, **kwargs):
+                raise ValueError("Audio quality validation failed")
+            
+            with patch('asyncio.run', side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+                mock_orchestrator.process_registration_audio = AsyncMock(side_effect=mock_process_fail)
+                
+                result = lambda_handler(mock_s3_event, mock_lambda_context)
+                
+                assert result['statusCode'] == 207  # Multi-Status
+                body = json.loads(result['body'])
+                assert body['failed_files'] == 1
+                assert len(body['errors']) == 1
+                assert 'Audio quality validation failed' in body['errors'][0]['error']
     
     def test_lambda_handler_exception(self, mock_lambda_context):
         """Test Lambda handler with unexpected exception."""
-        with patch('handler.S3EventParser') as mock_parser:
+        
+        with patch('presentation.lambda_handler.S3EventParser') as mock_parser:
             mock_parser.side_effect = Exception("Unexpected error")
             
             result = lambda_handler({}, mock_lambda_context)
@@ -94,155 +130,91 @@ class TestLambdaHandler:
             assert 'Internal server error' in body['message']
 
 
-@pytest.mark.unit
-class TestProcessSingleAudioFile:
-    """Test cases for single audio file processing."""
-    
-    def test_process_single_audio_file_success(self):
-        """Test successful audio file processing."""
-        s3_event = {
-            'bucket': 'test-bucket',
-            'key': 'audio-uploads/user123/sample1.wav',
-            'size': 1048576
-        }
-        
-        mock_pipeline_result = {
-            'success': True,
-            'registration_complete': False,
-            'processing_time_ms': 1500,
-            'processing_stages': {
-                'generate_embedding': {'status': 'success'}
-            },
-            'completion_response': None,
-            'progress_response': {'message': 'Sample recorded'},
-            'error_details': None
-        }
-        
-        with patch('handler.extract_user_id_from_key') as mock_extract, \
-             patch('handler.AudioProcessingPipeline') as mock_pipeline_class:
-            
-            mock_extract.return_value = 'user123'
-            mock_pipeline = Mock()
-            mock_pipeline_class.return_value = mock_pipeline
-            mock_pipeline.process_s3_event.return_value = mock_pipeline_result
-            
-            result = process_single_audio_file(s3_event)
-            
-            assert result['success'] is True
-            assert result['user_id'] == 'user123'
-            assert result['embedding_generated'] is True
-            assert result['registration_complete'] is False
-            assert result['processing_time_ms'] == 1500
-    
-    def test_process_single_audio_file_pipeline_failure(self):
-        """Test audio file processing with pipeline failure."""
-        s3_event = {
-            'bucket': 'test-bucket',
-            'key': 'audio-uploads/user123/sample1.wav',
-            'size': 1048576
-        }
-        
-        with patch('handler.extract_user_id_from_key') as mock_extract, \
-             patch('handler.AudioProcessingPipeline') as mock_pipeline_class:
-            
-            mock_extract.return_value = 'user123'
-            mock_pipeline = Mock()
-            mock_pipeline_class.return_value = mock_pipeline
-            mock_pipeline.process_s3_event.side_effect = RuntimeError("Pipeline failed")
-            
-            result = process_single_audio_file(s3_event)
-            
-            assert result['success'] is False
-            assert result['user_id'] is None
-            assert result['embedding_generated'] is False
-            assert 'Pipeline failed' in result['error']
-
-
-@pytest.mark.unit
-class TestExtractUserId:
-    """Test cases for user ID extraction."""
-    
-    def test_extract_user_id_success(self):
-        """Test successful user ID extraction."""
-        with patch('handler.infra_settings') as mock_settings:
-            mock_settings.s3_trigger_prefix = 'audio-uploads/'
-            
-            user_id = extract_user_id_from_key('audio-uploads/user123/sample1.wav')
-            assert user_id == 'user123'
-    
-    def test_extract_user_id_invalid_prefix(self):
-        """Test user ID extraction with invalid prefix."""
-        with patch('handler.infra_settings') as mock_settings:
-            mock_settings.s3_trigger_prefix = 'audio-uploads/'
-            
-            with pytest.raises(ValueError, match="Key does not start with expected prefix"):
-                extract_user_id_from_key('wrong-prefix/user123/sample1.wav')
-    
-    def test_extract_user_id_no_user_id(self):
-        """Test user ID extraction with no user ID."""
-        with patch('handler.infra_settings') as mock_settings:
-            mock_settings.s3_trigger_prefix = 'audio-uploads/'
-            
-            with pytest.raises(ValueError, match="Could not extract user_id"):
-                extract_user_id_from_key('audio-uploads/')
-    
-    def test_extract_user_id_invalid_format(self):
-        """Test user ID extraction with invalid key format."""
-        with patch('handler.infra_settings') as mock_settings:
-            mock_settings.s3_trigger_prefix = 'audio-uploads/'
-            
-            with pytest.raises(ValueError, match="Invalid S3 key format"):
-                extract_user_id_from_key('completely-wrong-format')
+# Backwards compatibility functions removed - no longer needed
+# Clean Architecture handles all functionality through proper interfaces
 
 
 @pytest.mark.integration
 class TestHandlerIntegration:
-    """Integration tests for handler with real components."""
+    """Integration tests for Clean Architecture handler."""
     
     def test_handler_with_real_event_parser(self, mock_s3_event, mock_lambda_context):
-        """Test handler with real S3EventParser."""
-        with patch('handler.process_single_audio_file') as mock_process:
-            mock_process.return_value = {
-                'bucket': 'test-voice-uploads',
-                'key': 'audio-uploads/user123/sample1.wav',
-                'user_id': 'user123',
-                'success': True,
-                'embedding_generated': True,
-                'registration_complete': False
-            }
+        """Test handler with real S3EventParser using Clean Architecture."""
+        
+        with patch('presentation.lambda_handler.RegistrationOrchestrator') as mock_orchestrator_class:
+            mock_orchestrator = Mock()
+            mock_orchestrator_class.return_value = mock_orchestrator
             
-            result = lambda_handler(mock_s3_event, mock_lambda_context)
-            
-            assert result['statusCode'] == 200
-            body = json.loads(result['body'])
-            assert body['processed_files'] == 1
-            mock_process.assert_called_once()
-    
-    def test_handler_end_to_end_flow(self, mock_s3_event, mock_lambda_context, sample_audio_data):
-        """Test end-to-end handler flow with mocked AWS services."""
-        with patch('handler.AudioProcessingPipeline') as mock_pipeline_class, \
-             patch('services.s3_operations.s3_operations') as mock_s3_ops, \
-             patch('services.dynamodb_operations.dynamodb_operations') as mock_db_ops:
-            
-            # Setup comprehensive mocks
-            mock_pipeline = Mock()
-            mock_pipeline_class.return_value = mock_pipeline
-            mock_pipeline.process_s3_event.return_value = {
-                'success': True,
-                'registration_complete': True,
-                'processing_time_ms': 2000,
-                'processing_stages': {
-                    'extract_user_id': {'status': 'success'},
-                    'download_and_validate': {'status': 'success'},
-                    'generate_embedding': {'status': 'success'},
-                    'update_user_record': {'status': 'success'},
-                    'check_completion': {'status': 'success'}
+            async def mock_process(*args, **kwargs):
+                return {
+                    'bucket': 'test-voice-uploads',
+                    'key': 'audio-uploads/user123/sample1.wav',
+                    'user_id': 'user123',
+                    'success': True,
+                    'embedding_dimensions': 256,
+                    'quality_score': 0.85,
+                    'user_embedding_count': 1,
+                    'registration_complete': False,
+                    'processing_time_ms': 1500
                 }
-            }
             
-            result = lambda_handler(mock_s3_event, mock_lambda_context)
+            with patch('asyncio.run', side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+                mock_orchestrator.process_registration_audio = AsyncMock(side_effect=mock_process)
+                
+                result = lambda_handler(mock_s3_event, mock_lambda_context)
+                
+                assert result['statusCode'] == 200
+                body = json.loads(result['body'])
+                assert body['processed_files'] == 1
+                mock_orchestrator.process_registration_audio.assert_called_once()
+    
+    def test_handler_end_to_end_flow(self, mock_s3_event, mock_lambda_context):
+        """Test end-to-end handler flow with Clean Architecture."""
+        
+        # Mock all Clean Architecture components
+        with patch('presentation.lambda_handler.RegistrationOrchestrator') as mock_orchestrator_class, \
+             patch('presentation.lambda_handler.S3EventParser') as mock_parser:
             
-            assert result['statusCode'] == 200
-            body = json.loads(result['body'])
-            assert body['processed_files'] == 1
-            assert body['failed_files'] == 0
+            # Setup event parser
+            mock_parser.return_value.parse_event.return_value = [
+                {'bucket': 'test-bucket', 'key': 'audio-uploads/user123/sample1.wav', 'size': 1048576}
+            ]
+            
+            # Setup orchestrator
+            mock_orchestrator = Mock()
+            mock_orchestrator_class.return_value = mock_orchestrator
+            
+            async def mock_process(*args, **kwargs):
+                return {
+                    'bucket': 'test-bucket',
+                    'key': 'audio-uploads/user123/sample1.wav',
+                    'user_id': 'user123',
+                    'success': True,
+                    'embedding_dimensions': 256,
+                    'quality_score': 0.85,
+                    'user_embedding_count': 2,
+                    'registration_complete': True,
+                    'processing_time_ms': 2000,
+                    'processing_stages': {
+                        'extract_user_id': {'status': 'success'},
+                        'voice_processing': {'status': 'success'},
+                        'check_completion': {'status': 'success'}
+                    }
+                }
+            
+            with patch('asyncio.run', side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+                mock_orchestrator.process_registration_audio = AsyncMock(side_effect=mock_process)
+                
+                result = lambda_handler(mock_s3_event, mock_lambda_context)
+                
+                assert result['statusCode'] == 200
+                body = json.loads(result['body'])
+                assert body['processed_files'] == 1
+                assert body['failed_files'] == 0
+                
+                # Verify the result structure matches expected format
+                result_item = body['results'][0]
+                assert result_item['success'] is True
+                assert result_item['user_id'] == 'user123'
+                assert result_item['registration_complete'] is True
+                assert result_item['processing_time_ms'] == 2000

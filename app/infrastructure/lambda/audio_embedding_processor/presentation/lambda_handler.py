@@ -4,6 +4,7 @@ Lambda handler for processing audio files from S3 events.
 This module serves as the entry point for the Lambda function following
 Clean Architecture principles with dependency injection.
 """
+import asyncio
 import json
 import logging
 import os
@@ -75,7 +76,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for s3_event in s3_events:
             try:
                 # Note: We'll run async operation in sync context for Lambda compatibility
-                import asyncio
                 result = asyncio.run(orchestrator.process_registration_audio(s3_event))
                 processed_files.append(result)
                 logger.info("Successfully processed audio file", extra={

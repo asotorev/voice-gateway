@@ -41,6 +41,11 @@ class UserRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def get_user_embedding_count(self, user_id: str) -> int:
+        """Get count of voice embeddings for a user."""
+        pass
+
+    @abstractmethod
     async def delete(self, user_id: str) -> None:
         """Delete a user by ID."""
         pass 

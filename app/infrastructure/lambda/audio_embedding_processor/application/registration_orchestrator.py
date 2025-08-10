@@ -4,21 +4,29 @@ Registration orchestrator for audio processing pipeline.
 This module orchestrates the complete audio processing workflow using
 Clean Architecture principles and shared layer components.
 """
+import sys
+import os
 import logging
 import time
 from typing import Dict, Any
 from datetime import datetime, timezone
 
-# Import from shared layer
-from shared.core.usecases.process_voice_sample import ProcessVoiceSampleUseCase
-from shared.adapters.audio_processors.resemblyzer_processor import get_audio_processor
-from shared.adapters.storage.s3_audio_storage import S3AudioStorageService
-from shared.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
+# Add shared layer to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared_layer', 'python'))
 
-# Import legacy components (for completion checking and notifications)
-from utils.completion_checker import completion_checker
-from utils.notification_handler import notification_handler
-from utils.user_status_manager import user_status_manager
+# Import from shared layer and application dependencies
+from shared.core.usecases.process_voice_sample import ProcessVoiceSampleUseCase
+from shared.core.services import (
+    completion_checker,
+    user_status_manager,
+    notification_handler
+)
+from application.dependencies import (
+    get_audio_processor,
+    get_storage_service,
+    get_user_repository,
+    get_process_voice_sample_use_case
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +35,20 @@ class RegistrationOrchestrator:
     """
     Orchestrates the complete audio registration workflow.
     
-    Coordinates between the shared layer use cases and legacy components
-    for registration completion tracking and user notifications.
+    Coordinates between the shared layer use cases and completion tracking
+    services for registration workflow and user notifications.
     """
     
     def __init__(self):
         """Initialize the registration orchestrator with dependencies."""
-        # Shared layer dependencies
+        # Get dependencies from dependency injection container
         self.audio_processor = get_audio_processor()
-        self.storage_service = S3AudioStorageService()
-        self.user_repository = DynamoDBUserRepository()
-        
-        # Create use case with dependencies
-        self.process_voice_sample = ProcessVoiceSampleUseCase(
-            audio_processor=self.audio_processor,
-            storage_service=self.storage_service,
-            user_repository=self.user_repository
-        )
+        self.storage_service = get_storage_service()
+        self.user_repository = get_user_repository()
+        self.process_voice_sample_use_case = get_process_voice_sample_use_case()
+        self.completion_checker = completion_checker
+        self.user_status_manager = user_status_manager
+        self.notification_handler = notification_handler
         
         logger.info("Registration orchestrator initialized")
     
@@ -90,21 +95,31 @@ class RegistrationOrchestrator:
             }
             
             # Stage 2-4: Process voice sample using shared layer use case
-            voice_processing_result = await self.process_voice_sample.execute(key)
+            voice_processing_result = await self.process_voice_sample_use_case.execute(key)
             
             # Extract results from use case
             voice_embedding = voice_processing_result['voice_embedding']
             user_update_result = voice_processing_result['user_update_result']
+            processing_metadata = voice_processing_result['processing_metadata']
+            
+            # Check for security validation warnings
+            security_validation = processing_metadata.get('security_validation', {})
+            security_warnings = security_validation.get('warnings', [])
             
             processing_result['processing_stages']['voice_processing'] = {
                 'status': 'success',
                 'embedding_dimensions': voice_embedding.get_embedding_dimensions(),
                 'quality_score': voice_embedding.quality_score,
                 'total_embeddings': user_update_result['total_embeddings'],
+                'security_warnings': security_warnings,
+                'validation_summary': {
+                    'security_score': security_validation.get('overall_score', 1.0),
+                    'ml_quality_valid': processing_metadata.get('ml_quality_validation', {}).get('is_valid', True)
+                },
                 'completed_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Stage 5: Legacy completion checking and notifications
+            # Stage 5: Completion checking and notifications
             completion_result = await self._check_completion_stage(user_id, processing_result)
             
             # Calculate processing time
@@ -149,7 +164,7 @@ class RegistrationOrchestrator:
     
     async def _check_completion_stage(self, user_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Legacy completion checking and notification stage.
+        Completion checking and notification stage.
         
         This maintains compatibility with existing notification system
         while using the new architecture for core processing.
@@ -158,7 +173,7 @@ class RegistrationOrchestrator:
         logger.debug(f"Starting stage: {stage_name}")
         
         try:
-            # Get complete user data for analysis (using legacy approach for compatibility)
+            # Get complete user data for analysis
             user_data = await self.user_repository.get_user(user_id)
             if not user_data:
                 raise ValueError(f"User {user_id} not found")
@@ -188,29 +203,45 @@ class RegistrationOrchestrator:
                 })
                 
                 # Create completion response data
-                completion_response = notification_handler.notify_registration_completed(user_id, {
+                completion_response = notification_handler.send_registration_completed_notification(user_id, {
+                    'total_samples': progress_analysis['progress_metrics']['samples_collected'],
+                    'average_quality': progress_analysis['quality_analysis']['average_quality'],
                     'completion_confidence': completion_analysis['completion_confidence'],
-                    'registration_score': completion_analysis['registration_score'],
-                    'total_samples': progress_analysis['progress_metrics']['samples_collected']
+                    'registration_score': completion_analysis['registration_score']
                 })
             
             # Create progress response for non-completed registrations
             if not completion_analysis['is_complete']:
                 # Check if we should send quality warning
                 if progress_analysis['quality_analysis']['average_quality'] < 0.7:
-                    progress_response = notification_handler.notify_quality_warning(user_id, {
-                        'quality_score': progress_analysis['quality_analysis']['average_quality'],
-                        'samples_collected': progress_analysis['progress_metrics']['samples_collected'],
-                        'quality_trend': progress_analysis['quality_analysis']['quality_trend']
-                    })
+                    quality_issues = [
+                        f"Average quality {progress_analysis['quality_analysis']['average_quality']:.2f} below threshold",
+                        f"Quality trend: {progress_analysis['quality_analysis']['quality_trend']}"
+                    ]
+                    progress_response = notification_handler.send_quality_warning_notification(
+                        user_id, 
+                        quality_issues,
+                        progress_analysis['quality_analysis']['average_quality']
+                    )
                 else:
                     # Create regular progress response
-                    progress_response = notification_handler.notify_sample_recorded(user_id, {
+                    sample_info = {
+                        'sample_number': progress_analysis['progress_metrics']['samples_collected'],
                         'total_samples': progress_analysis['progress_metrics']['samples_collected'],
                         'required_samples': progress_analysis['progress_metrics']['required_samples'],
                         'completion_percentage': progress_analysis['progress_metrics']['completion_percentage'],
                         'samples_remaining': progress_analysis['progress_metrics']['samples_remaining']
-                    })
+                    }
+                    progress_response = notification_handler.send_sample_recorded_notification(user_id, sample_info)
+            
+            # Check for security warnings from current processing
+            security_warnings = result.get('processing_stages', {}).get('voice_processing', {}).get('security_warnings', [])
+            if security_warnings:
+                security_response = notification_handler.send_quality_warning_notification(
+                    user_id,
+                    [f"Security warning: {warning}" for warning in security_warnings],
+                    0.5  # Lower quality score for security issues
+                )
             
             # Compile enhanced completion result
             enhanced_result = {
@@ -234,6 +265,10 @@ class RegistrationOrchestrator:
             # Add progress response if available  
             if 'progress_response' in locals():
                 enhanced_result['progress_response'] = progress_response
+                
+            # Add security response if available
+            if 'security_response' in locals():
+                enhanced_result['security_response'] = security_response
             
             result['processing_stages'][stage_name] = {
                 'status': 'success',

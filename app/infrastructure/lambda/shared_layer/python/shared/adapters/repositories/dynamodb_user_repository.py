@@ -126,13 +126,17 @@ class DynamoDBUserRepository(UserRepositoryPort):
             # Add new embedding
             current_embeddings.append(embedding_entry)
             
-            # Check if registration is complete
-            is_complete = len(current_embeddings) >= self.required_samples
+            # Calculate new embedding count
+            new_embedding_count = len(current_embeddings)
             
-            # Update user record atomically
-            update_expression = "SET voice_embeddings = :embeddings, updated_at = :updated_at"
+            # Check if registration is complete
+            is_complete = new_embedding_count >= self.required_samples
+            
+            # Update user record atomically with embedding count
+            update_expression = "SET voice_embeddings = :embeddings, voice_embeddings_count = :count, updated_at = :updated_at"
             expression_values = {
                 ':embeddings': current_embeddings,
+                ':count': new_embedding_count,
                 ':updated_at': datetime.now(timezone.utc).isoformat()
             }
             
@@ -161,7 +165,7 @@ class DynamoDBUserRepository(UserRepositoryPort):
             
             return {
                 'user_id': user_id,
-                'total_embeddings': len(current_embeddings),
+                'total_embeddings': new_embedding_count,
                 'registration_complete': is_complete,
                 'updated_user': updated_user
             }
@@ -340,9 +344,9 @@ class DynamoDBUserRepository(UserRepositoryPort):
             })
             raise
     
-    def get_user_embedding_count(self, user_id: str) -> int:
+    async def get_user_embedding_count(self, user_id: str) -> int:
         """
-        Get count of voice embeddings for a user.
+        Get count of voice embeddings for a user (async).
         
         Args:
             user_id: User identifier
@@ -351,18 +355,30 @@ class DynamoDBUserRepository(UserRepositoryPort):
             Number of voice embeddings stored
         """
         try:
-            # Use sync call for compatibility with existing code
-            response = self.table.get_item(Key={'user_id': user_id})
+            response = self.table.get_item(
+                Key={'user_id': user_id},
+                ProjectionExpression='voice_embeddings_count, voice_embeddings'  # Get both for fallback
+            )
             
             if 'Item' not in response:
                 raise ValueError(f"User {user_id} not found")
             
             user = response['Item']
-            embedding_count = len(user.get('voice_embeddings', []))
+            
+            # Use persisted count if available, fallback to calculated count
+            embedding_count = user.get('voice_embeddings_count')
+            if embedding_count is None:
+                # Fallback for existing users without voice_embeddings_count field
+                embedding_count = len(user.get('voice_embeddings', []))
+                logger.warning("Using fallback embedding count calculation", extra={
+                    "user_id": user_id,
+                    "embedding_count": embedding_count
+                })
             
             logger.debug("Retrieved user embedding count", extra={
                 "user_id": user_id,
-                "embedding_count": embedding_count
+                "embedding_count": embedding_count,
+                "source": "persisted" if user.get('voice_embeddings_count') is not None else "calculated"
             })
             
             return embedding_count

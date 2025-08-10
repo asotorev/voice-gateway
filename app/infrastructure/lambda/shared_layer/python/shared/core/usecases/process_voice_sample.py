@@ -10,6 +10,7 @@ from ..models.voice_embedding import VoiceEmbedding
 from ..ports.audio_processor import AudioProcessorPort
 from ..ports.storage_service import StorageServicePort
 from ..ports.user_repository import UserRepositoryPort
+from ..services.audio_quality_validator import validate_audio_quality
 
 
 class ProcessVoiceSampleUseCase:
@@ -70,17 +71,24 @@ class ProcessVoiceSampleUseCase:
         # Download audio data
         audio_data = await self.storage_service.download_audio_file(file_path)
         
-        # Validate audio quality
-        quality_result = self.audio_processor.validate_audio_quality(
+        # Stage 1: Security and format validation (first line of defense)
+        security_validation_result = validate_audio_quality(audio_data, file_metadata)
+        
+        if not security_validation_result['is_valid']:
+            validation_errors = security_validation_result['validation_failed']
+            raise ValueError(f"Audio security/format validation failed: {', '.join(validation_errors)}")
+        
+        # Stage 2: ML-specific audio quality validation
+        ml_quality_result = self.audio_processor.validate_audio_quality(
             audio_data, file_metadata
         )
         
-        if not quality_result['is_valid']:
-            raise ValueError(f"Audio quality validation failed: {quality_result['issues']}")
+        if not ml_quality_result['is_valid']:
+            raise ValueError(f"Audio ML quality validation failed: {ml_quality_result['issues']}")
         
         # Generate voice embedding
         embedding = self.audio_processor.generate_embedding(audio_data, file_metadata)
-        quality_score = quality_result['overall_quality_score']
+        quality_score = ml_quality_result['overall_quality_score']
         
         # Update audio sample with processing results
         audio_sample.set_processing_result(embedding, quality_score)
@@ -119,6 +127,7 @@ class ProcessVoiceSampleUseCase:
                 'file_size_bytes': audio_sample.file_size_bytes,
                 'format': audio_sample.format,
                 'processor_info': voice_embedding.processor_info,
-                'validation_result': quality_result
+                'security_validation': security_validation_result,
+                'ml_quality_validation': ml_quality_result
             }
         }

@@ -226,6 +226,42 @@ class DynamoDBUserRepository(UserRepositoryPort):
         except Exception as e:
             raise Exception(f"Unexpected error checking password hash: {str(e)}")
     
+    async def get_user_embedding_count(self, user_id: str) -> int:
+        """
+        Get count of voice embeddings for a user (optimized query).
+        
+        Args:
+            user_id: User ID to get embedding count for
+            
+        Returns:
+            Number of voice embeddings stored
+            
+        Raises:
+            Exception: If user not found or query fails
+        """
+        try:
+            response = self.table.get_item(
+                Key={'user_id': user_id},
+                ProjectionExpression='voice_embeddings_count, voice_embeddings'  # Get both for fallback
+            )
+            
+            item = response.get('Item')
+            if not item:
+                raise Exception(f"User {user_id} not found")
+            
+            # Use persisted count if available, fallback to calculated count
+            embedding_count = item.get('voice_embeddings_count')
+            if embedding_count is None:
+                # Fallback for existing users without voice_embeddings_count field
+                embedding_count = len(item.get('voice_embeddings', []))
+            
+            return int(embedding_count)
+            
+        except ClientError as e:
+            raise Exception(f"Failed to get embedding count: {e.response['Error']['Message']}")
+        except Exception as e:
+            raise Exception(f"Unexpected error getting embedding count: {str(e)}")
+
     async def delete(self, user_id: str) -> None:
         """Delete a user by ID from DynamoDB."""
         try:

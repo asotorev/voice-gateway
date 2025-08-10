@@ -71,7 +71,7 @@ class UserRepositoryPort(ABC):
         status_update: Dict[str, Any]
     ) -> bool:
         """
-        Update user registration status.
+        Update user status information.
         
         Args:
             user_id: User identifier
@@ -79,6 +79,19 @@ class UserRepositoryPort(ABC):
             
         Returns:
             True if update was successful
+        """
+        pass
+    
+    @abstractmethod
+    async def get_user_embedding_count(self, user_id: str) -> int:
+        """
+        Get count of voice embeddings for a user.
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            Number of voice embeddings stored
         """
         pass
     
