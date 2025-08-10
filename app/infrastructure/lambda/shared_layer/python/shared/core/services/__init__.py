@@ -56,6 +56,12 @@ from .voice_authentication_service import (
     calculate_embedding_similarity
 )
 
+from .transcription_service import (
+    TranscriptionService,
+    TranscriptionConfig,
+    get_transcription_service
+)
+
 __all__ = [
     # Audio Quality Validator
     'AudioQualityValidator',
@@ -91,5 +97,10 @@ __all__ = [
     'AuthenticationResult',
     'voice_authentication_service',
     'authenticate_voice_sample',
-    'calculate_embedding_similarity'
+    'calculate_embedding_similarity',
+    
+    # Transcription Service
+    'TranscriptionService',
+    'TranscriptionConfig',
+    'get_transcription_service'
 ]

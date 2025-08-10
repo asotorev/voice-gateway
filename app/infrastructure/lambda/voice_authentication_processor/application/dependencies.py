@@ -14,12 +14,14 @@ from shared.core.ports.audio_processor import AudioProcessorPort
 from shared.core.ports.storage_service import StorageServicePort
 from shared.core.ports.user_repository import UserRepositoryPort
 from shared.core.ports.voice_authentication import VoiceAuthenticationPort
+from shared.core.ports.transcription_service import TranscriptionServicePort
 from shared.core.usecases.authenticate_voice import AuthenticateVoiceUseCase
-from shared.core.services import voice_authentication_service
+from shared.core.services import voice_authentication_service, get_transcription_service
 from shared.adapters.audio_processors.resemblyzer_processor import get_audio_processor
 from shared.adapters.storage.s3_audio_storage import S3AudioStorageService
 from shared.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
 from shared.adapters.voice_authentication.voice_authentication_adapter import VoiceAuthenticationAdapter
+from shared.adapters.transcription.openai_transcription_adapter import OpenAITranscriptionAdapter
 from shared.infrastructure.aws.aws_config import AWSConfigManager
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,7 @@ class VoiceAuthDependencyContainer:
         self._storage_service: Optional[StorageServicePort] = None
         self._user_repository: Optional[UserRepositoryPort] = None
         self._voice_authentication: Optional[VoiceAuthenticationPort] = None
+        self._transcription_service: Optional[TranscriptionServicePort] = None
         self._authenticate_voice_use_case: Optional[AuthenticateVoiceUseCase] = None
         
         logger.info("Voice authentication dependency container initialized")
@@ -81,6 +84,14 @@ class VoiceAuthDependencyContainer:
             logger.debug("Voice authentication adapter created")
         return self._voice_authentication
     
+    def get_transcription_service(self) -> TranscriptionServicePort:
+        """Get transcription service (singleton)."""
+        if self._transcription_service is None:
+            transcription_service = get_transcription_service()
+            self._transcription_service = OpenAITranscriptionAdapter(transcription_service)
+            logger.debug("Transcription service adapter created")
+        return self._transcription_service
+    
     def get_authenticate_voice_use_case(self) -> AuthenticateVoiceUseCase:
         """Get authenticate voice use case (singleton)."""
         if self._authenticate_voice_use_case is None:
@@ -106,6 +117,7 @@ class VoiceAuthDependencyContainer:
             'storage_service': self.get_storage_service(),
             'user_repository': self.get_user_repository(),
             'voice_authentication': self.get_voice_authentication(),
+            'transcription_service': self.get_transcription_service(),
             'authenticate_voice_use_case': self.get_authenticate_voice_use_case()
         }
     
@@ -116,6 +128,7 @@ class VoiceAuthDependencyContainer:
         self._storage_service = None
         self._user_repository = None
         self._voice_authentication = None
+        self._transcription_service = None
         self._authenticate_voice_use_case = None
         logger.debug("Voice authentication dependency container reset")
 
@@ -152,6 +165,11 @@ def get_user_repository() -> UserRepositoryPort:
 def get_voice_authentication() -> VoiceAuthenticationPort:
     """Get voice authentication service."""
     return _container.get_voice_authentication()
+
+
+def get_transcription_service() -> TranscriptionServicePort:
+    """Get transcription service."""
+    return _container.get_transcription_service()
 
 
 def get_authenticate_voice_use_case() -> AuthenticateVoiceUseCase:

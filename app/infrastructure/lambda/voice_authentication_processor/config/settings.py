@@ -38,10 +38,12 @@ class VoiceAuthSettings:
     voice_auth_min_similarity: float = float(os.getenv('VOICE_AUTH_MIN_SIMILARITY', '0.75'))
     voice_auth_high_confidence: float = float(os.getenv('VOICE_AUTH_HIGH_CONFIDENCE', '0.85'))
     
-    # Whisper Configuration
-    whisper_model_size: str = os.getenv('WHISPER_MODEL_SIZE', 'base')
-    whisper_language: str = os.getenv('WHISPER_LANGUAGE', 'es')
+    # OpenAI Whisper Configuration
+    openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
+    transcription_model: str = os.getenv('TRANSCRIPTION_MODEL', 'whisper-1')
+    transcription_language: str = os.getenv('TRANSCRIPTION_LANGUAGE', 'es')
     transcription_confidence_threshold: float = float(os.getenv('TRANSCRIPTION_CONFIDENCE_THRESHOLD', '0.7'))
+    transcription_timeout: int = int(os.getenv('TRANSCRIPTION_TIMEOUT', '30'))
     
     # Password Validation Configuration
     expected_word_count: int = int(os.getenv('EXPECTED_WORD_COUNT', '3'))
@@ -61,6 +63,9 @@ class VoiceAuthSettings:
         
         if not self.users_table_name:
             raise ValueError("USERS_TABLE_NAME environment variable is required")
+        
+        if not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
         
         if not (0.0 <= self.voice_auth_threshold <= 1.0):
             raise ValueError("VOICE_AUTH_THRESHOLD must be between 0.0 and 1.0")
@@ -84,9 +89,10 @@ class VoiceAuthSettings:
             'voice_auth_threshold': self.voice_auth_threshold,
             'voice_auth_min_similarity': self.voice_auth_min_similarity,
             'voice_auth_high_confidence': self.voice_auth_high_confidence,
-            'whisper_model_size': self.whisper_model_size,
-            'whisper_language': self.whisper_language,
+            'transcription_model': self.transcription_model,
+            'transcription_language': self.transcription_language,
             'transcription_confidence_threshold': self.transcription_confidence_threshold,
+            'transcription_timeout': self.transcription_timeout,
             'expected_word_count': self.expected_word_count,
             'word_separator': self.word_separator,
             'min_word_length': self.min_word_length,
@@ -112,6 +118,7 @@ def get_environment_info() -> Dict[str, Any]:
         'lambda_memory_size': settings.lambda_memory_size,
         'lambda_timeout': settings.lambda_timeout,
         'voice_auth_threshold': settings.voice_auth_threshold,
-        'whisper_model_size': settings.whisper_model_size,
+        'transcription_model': settings.transcription_model,
+        'transcription_language': settings.transcription_language,
         'expected_word_count': settings.expected_word_count
     }

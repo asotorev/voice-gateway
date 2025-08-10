@@ -23,7 +23,8 @@ from application.dependencies import (
     get_audio_processor,
     get_storage_service,
     get_user_repository,
-    get_authenticate_voice_use_case
+    get_authenticate_voice_use_case,
+    get_transcription_service
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class AuthOrchestrator:
         self.storage_service = get_storage_service()
         self.user_repository = get_user_repository()
         self.authenticate_voice_use_case = get_authenticate_voice_use_case()
+        self.transcription_service = get_transcription_service()
         
         logger.info("Authentication orchestrator initialized")
     
@@ -388,30 +390,40 @@ class AuthOrchestrator:
     
     async def _transcribe_audio_with_whisper(self, audio_data: bytes, file_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Transcribe audio using Whisper via audio processor.
+        Transcribe audio using OpenAI Whisper API.
         
-        TODO: Implement Whisper integration in audio processor.
-        For now, returns mock transcription for testing.
+        Uses the transcription service to convert audio to text for password validation.
         """
-        logger.debug("Transcribing audio with Whisper")
+        logger.debug("Transcribing audio with OpenAI Whisper")
         
-        # TODO: Implement actual Whisper transcription
-        # This should be added to the audio processor interface and implementation
-        
-        # Mock implementation for now
-        mock_transcription = {
-            'text': 'gato luna sol',  # Mock Spanish words
-            'confidence': 0.95,
-            'language': 'es',
-            'processing_time_ms': 150
-        }
-        
-        logger.warning("Using mock Whisper transcription - implement actual Whisper integration", extra={
-            'file_size': len(audio_data),
-            'mock_text': mock_transcription['text']
-        })
-        
-        return mock_transcription
+        try:
+            # Extract filename from metadata if available
+            filename = file_metadata.get('filename', 'auth_audio.wav')
+            
+            # Use the transcription service
+            transcription_result = await self.transcription_service.transcribe_audio(
+                audio_data=audio_data,
+                language="es",  # Spanish for password validation
+                filename=filename
+            )
+            
+            logger.info("Whisper transcription completed", extra={
+                'text_length': len(transcription_result['text']),
+                'confidence': transcription_result.get('confidence', 0.0),
+                'processing_time_ms': transcription_result.get('processing_time_ms', 0)
+            })
+            
+            return transcription_result
+            
+        except Exception as e:
+            logger.error("Whisper transcription failed", extra={
+                'error': str(e),
+                'file_size': len(audio_data),
+                'metadata': file_metadata
+            })
+            
+            # Re-raise to be handled by caller
+            raise
     
     def _extract_words_from_transcription(self, transcribed_text: str) -> List[str]:
         """

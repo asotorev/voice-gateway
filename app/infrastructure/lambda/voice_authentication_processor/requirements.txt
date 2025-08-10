@@ -4,21 +4,17 @@
 boto3>=1.26.0
 botocore>=1.29.0
 
-# Audio Processing & Whisper
-openai-whisper>=20231117
-torch>=2.0.0
-torchaudio>=2.0.0
-librosa>=0.10.0
-soundfile>=0.12.0
-
-# Audio format support
-pydub>=0.25.1
-ffmpeg-python>=0.2.0
+# OpenAI API for Whisper transcription
+openai>=1.0.0
 
 # Voice Authentication (Resemblyzer for embeddings)
 resemblyzer>=0.1.1
 numpy>=1.24.0
 scipy>=1.10.0
+
+# Audio Processing
+librosa>=0.10.0
+soundfile>=0.12.0
 
 # Data Processing
 pandas>=2.0.0
