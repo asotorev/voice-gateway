@@ -129,19 +129,13 @@ class AuthOrchestrator:
                 'completed_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Stage 4: Dual Authentication - Transcription + Password Validation
-            transcription_result = await self._perform_transcription_validation(
-                user_id, audio_data, file_metadata, authentication_result
-            )
-            
-            # Stage 5: Voice Embedding Authentication
-            embedding_result = await self._perform_embedding_authentication(
-                user_id, key, authentication_result
-            )
-            
-            # Stage 6: Combine authentication results
-            final_result = await self._combine_authentication_results(
-                user_id, transcription_result, embedding_result, authentication_result
+            # Stage 4-6: Execute core authentication pipeline
+            final_result = await self._process_authentication_pipeline(
+                user_id=user_id,
+                audio_data=audio_data,
+                metadata=file_metadata,
+                result=authentication_result,
+                source="s3"
             )
             
             # Calculate processing time
@@ -175,19 +169,187 @@ class AuthOrchestrator:
             
             raise
     
+    async def stream_process_authentication_audio(
+        self, 
+        user_id: str, 
+        audio_data: bytes, 
+        metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process voice authentication directly from audio data stream.
+        
+        Performs dual validation without S3 storage - audio exists only in memory
+        during processing and is automatically destroyed after completion.
+        
+        Args:
+            user_id: User identifier to authenticate
+            audio_data: Raw audio bytes to process
+            metadata: Audio metadata and processing context
+            
+        Returns:
+            Dict with complete authentication results
+        """
+        start_time = time.time()
+        
+        logger.info("Starting stream voice authentication processing", extra={
+            "user_id": user_id,
+            "audio_size_bytes": len(audio_data),
+            "metadata_keys": list(metadata.keys())
+        })
+        
+        authentication_result = {
+            'user_id': user_id,
+            'invocation_type': 'stream',
+            'authentication_successful': False,
+            'confidence_score': 0.0,
+            'authentication_result': 'failed',
+            'processing_stages': {},
+            'error_details': None,
+            'processing_time_ms': 0,
+            'started_at': datetime.now(timezone.utc).isoformat(),
+            'completed_at': None,
+            'audio_stored': False  # Key difference from S3 processing
+        }
+        
+        try:
+            # Stage 1: Validate audio data in memory
+            logger.debug("Stage 1: Validating stream audio data")
+            security_validation = validate_audio_quality(audio_data, metadata)
+            
+            if not security_validation['is_valid']:
+                raise ValueError(f"Audio validation failed: {security_validation['validation_failed']}")
+            
+            ml_quality_validation = self.audio_processor.validate_audio_quality(audio_data, metadata)
+            
+            if not ml_quality_validation['is_valid']:
+                raise ValueError(f"Audio ML quality validation failed: {ml_quality_validation['issues']}")
+            
+            authentication_result['processing_stages']['validate_audio'] = {
+                'status': 'success',
+                'security_validation': security_validation,
+                'ml_quality_validation': ml_quality_validation,
+                'completed_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Stage 2-4: Execute core authentication pipeline
+            final_result = await self._process_authentication_pipeline(
+                user_id=user_id,
+                audio_data=audio_data,
+                metadata=metadata,
+                result=authentication_result,
+                source="stream"
+            )
+            
+            # Calculate processing time
+            authentication_result['processing_time_ms'] = int((time.time() - start_time) * 1000)
+            authentication_result['completed_at'] = datetime.now(timezone.utc).isoformat()
+            
+            logger.info("Stream voice authentication processing completed", extra={
+                "user_id": user_id,
+                "authentication_successful": final_result['authentication_successful'],
+                "confidence_score": final_result['confidence_score'],
+                "processing_time_ms": authentication_result['processing_time_ms'],
+                "audio_stored": False
+            })
+            
+            return authentication_result
+            
+        except Exception as e:
+            authentication_result['processing_time_ms'] = int((time.time() - start_time) * 1000)
+            authentication_result['error_details'] = {
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'failed_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            logger.error("Stream voice authentication processing failed", extra={
+                "user_id": user_id,
+                "audio_size_bytes": len(audio_data),
+                "error": str(e),
+                "processing_time_ms": authentication_result['processing_time_ms']
+            })
+            
+            raise
+    
+    async def _process_authentication_pipeline(
+        self,
+        user_id: str,
+        audio_data: bytes,
+        metadata: Dict[str, Any],
+        result: Dict[str, Any],
+        source: str
+    ) -> Dict[str, Any]:
+        """
+        Core authentication pipeline - source agnostic.
+        
+        Performs dual validation (transcription + voice embedding) regardless
+        of whether audio comes from S3 or stream invocation.
+        
+        Args:
+            user_id: User identifier to authenticate
+            audio_data: Raw audio bytes to process
+            metadata: Audio metadata and processing context
+            result: Authentication result dict to populate
+            source: Source of audio data ("s3" or "stream")
+            
+        Returns:
+            Updated authentication result
+        """
+        logger.info("Starting core authentication pipeline", extra={
+            "user_id": user_id,
+            "audio_size_bytes": len(audio_data),
+            "source": source
+        })
+        
+        try:
+            # Step 1: Transcription + Password Validation
+            transcription_result = await self._perform_transcription_validation(
+                user_id, audio_data, metadata, result, source
+            )
+            
+            # Step 2: Voice Embedding Authentication  
+            embedding_result = await self._perform_embedding_authentication(
+                user_id, audio_data, metadata, result, source
+            )
+            
+            # Step 3: Combine authentication results
+            final_result = await self._combine_authentication_results(
+                user_id, transcription_result, embedding_result, result
+            )
+            
+            logger.info("Core authentication pipeline completed", extra={
+                "user_id": user_id,
+                "source": source,
+                "authentication_successful": final_result['authentication_successful'],
+                "confidence_score": final_result['confidence_score']
+            })
+            
+            return final_result
+            
+        except Exception as e:
+            logger.error("Core authentication pipeline failed", extra={
+                "user_id": user_id,
+                "source": source,
+                "error": str(e),
+                "audio_size_bytes": len(audio_data)
+            })
+            raise
+    
     async def _perform_transcription_validation(
         self, 
         user_id: str, 
         audio_data: bytes, 
-        file_metadata: Dict[str, Any],
-        result: Dict[str, Any]
+        metadata: Dict[str, Any],
+        result: Dict[str, Any],
+        source: str
     ) -> Dict[str, Any]:
         """
         Perform audio transcription and password word validation.
         
         Uses Whisper to transcribe audio and validates against stored password hash.
+        Works with audio from any source (S3 or stream).
         """
-        stage_name = "transcription_validation"
+        stage_name = f"{source}_transcription_validation"
         logger.debug(f"Starting stage: {stage_name}")
         
         try:
@@ -200,9 +362,9 @@ class AuthOrchestrator:
             if not password_hash:
                 raise ValueError(f"No password hash found for user {user_id}")
             
-            # Transcribe audio using Whisper (via audio processor)
-            logger.debug("Transcribing audio with Whisper")
-            transcription_result = await self._transcribe_audio_with_whisper(audio_data, file_metadata)
+            # Transcribe audio using Whisper (source-agnostic)
+            logger.debug(f"Transcribing {source} audio with Whisper")
+            transcription_result = await self._transcribe_audio_with_whisper(audio_data, metadata)
             
             transcribed_text = transcription_result['text'].lower().strip()
             confidence = transcription_result.get('confidence', 0.0)
@@ -258,21 +420,65 @@ class AuthOrchestrator:
     async def _perform_embedding_authentication(
         self, 
         user_id: str, 
-        file_path: str,
-        result: Dict[str, Any]
+        audio_data: bytes,
+        metadata: Dict[str, Any],
+        result: Dict[str, Any],
+        source: str
     ) -> Dict[str, Any]:
         """
-        Perform voice embedding authentication using existing use case.
+        Perform voice embedding authentication directly from audio data.
+        
+        Generates embedding from audio bytes and compares against stored embeddings.
         """
-        stage_name = "embedding_authentication"
+        stage_name = f"{source}_embedding_authentication"
         logger.debug(f"Starting stage: {stage_name}")
         
         try:
-            # Use the existing AuthenticateVoiceUseCase for embedding authentication
-            embedding_auth_result = await self.authenticate_voice_use_case.execute_from_file(
-                user_id=user_id,
-                file_path=file_path
+            # Generate embedding directly from audio data in memory
+            logger.debug(f"Generating embedding from {source} audio")
+            input_embedding = self.audio_processor.generate_embedding(audio_data, metadata)
+            
+            # Get user's stored embeddings
+            user_embeddings = await self.user_repository.get_user_embeddings(user_id)
+            
+            if not user_embeddings:
+                logger.warning("No stored embeddings found for user", extra={"user_id": user_id})
+                return {
+                    'authentication_successful': False,
+                    'confidence_score': 0.0,
+                    'authentication_result': 'insufficient_data',
+                    'user_embeddings_count': 0,
+                    'similarity_analysis': {
+                        'total_comparisons': 0,
+                        'error': 'No stored embeddings found'
+                    }
+                }
+            
+            # Convert VoiceEmbedding objects to format expected by authentication service
+            stored_embeddings_data = []
+            for voice_embedding in user_embeddings:
+                stored_embeddings_data.append({
+                    'embedding': voice_embedding.embedding,
+                    'quality_score': voice_embedding.quality_score,
+                    'created_at': voice_embedding.created_at.isoformat() if voice_embedding.created_at else None,
+                    'audio_metadata': voice_embedding.sample_metadata
+                })
+            
+            logger.debug(f"Performing {source} voice authentication", extra={
+                "user_id": user_id,
+                "stored_embeddings_count": len(stored_embeddings_data),
+                "input_embedding_dimensions": len(input_embedding)
+            })
+            
+            # Perform authentication using voice authentication service
+            embedding_auth_result = self.voice_authentication.authenticate_voice(
+                input_embedding=input_embedding,
+                stored_embeddings=stored_embeddings_data
             )
+            
+            # Add metadata
+            embedding_auth_result['user_embeddings_count'] = len(stored_embeddings_data)
+            embedding_auth_result['embedding_source'] = source
             
             result['processing_stages'][stage_name] = {
                 'status': 'success',
@@ -388,17 +594,18 @@ class AuthOrchestrator:
             }
             raise
     
-    async def _transcribe_audio_with_whisper(self, audio_data: bytes, file_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    async def _transcribe_audio_with_whisper(self, audio_data: bytes, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transcribe audio using OpenAI Whisper API.
         
         Uses the transcription service to convert audio to text for password validation.
+        Works with audio from any source (S3 or stream).
         """
         logger.debug("Transcribing audio with OpenAI Whisper")
         
         try:
             # Extract filename from metadata if available
-            filename = file_metadata.get('filename', 'auth_audio.wav')
+            filename = metadata.get('filename', 'auth_audio.wav')
             
             # Use the transcription service
             transcription_result = await self.transcription_service.transcribe_audio(
@@ -419,7 +626,7 @@ class AuthOrchestrator:
             logger.error("Whisper transcription failed", extra={
                 'error': str(e),
                 'file_size': len(audio_data),
-                'metadata': file_metadata
+                'metadata': metadata
             })
             
             # Re-raise to be handled by caller
@@ -470,7 +677,7 @@ class AuthOrchestrator:
         words_match = reconstructed_hash == stored_password_hash
         
         # Calculate confidence based on word count and exact match
-        expected_word_count = 3  # Assuming 3-word passwords
+        expected_word_count = 2  # Assuming 2-word passwords
         word_count_confidence = min(len(extracted_words) / expected_word_count, 1.0)
         
         confidence = 1.0 if words_match else word_count_confidence * 0.5

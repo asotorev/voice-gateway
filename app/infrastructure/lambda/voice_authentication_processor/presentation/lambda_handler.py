@@ -27,8 +27,12 @@ async def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     AWS Lambda handler for voice authentication processing.
     
+    Supports two invocation types:
+    1. S3 Event-driven: Traditional S3 ObjectCreated events
+    2. Stream invocation: Direct audio processing without S3 storage
+    
     Args:
-        event: AWS Lambda event (S3 ObjectCreated)
+        event: AWS Lambda event (S3 ObjectCreated or direct invocation)
         context: AWS Lambda context
         
     Returns:
@@ -62,7 +66,13 @@ async def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
     
     try:
-        # Parse and validate S3 events
+        # Detect invocation type
+        if event.get('invocation_type') == 'stream':
+            # Direct stream invocation
+            logger.info("Processing stream voice authentication invocation")
+            return await handle_stream_invocation(event, context)
+        
+        # Default: S3 event-driven processing
         logger.debug("Parsing S3 events from Lambda trigger")
         parser = S3EventParser()
         s3_events = parser.parse_lambda_event(event)
@@ -210,4 +220,117 @@ def health_check_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "status": "unhealthy",
                 "error": str(e)
             })
+        }
+
+
+async def handle_stream_invocation(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Handle direct stream invocation for voice authentication.
+    
+    Processes audio data directly from the event payload without S3 storage.
+    
+    Args:
+        event: Direct invocation event with audio data
+        context: AWS Lambda context
+        
+    Returns:
+        Dict with authentication results
+    """
+    import base64
+    
+    logger.info("Starting stream voice authentication", extra={
+        "request_id": context.aws_request_id,
+        "user_id": event.get('user_id'),
+        "has_audio_data": 'audio_data' in event
+    })
+    
+    try:
+        # Extract and validate required fields
+        user_id = event.get('user_id')
+        if not user_id:
+            raise ValueError("user_id is required for stream authentication")
+        
+        audio_data_b64 = event.get('audio_data')
+        if not audio_data_b64:
+            raise ValueError("audio_data is required for stream authentication")
+        
+        # Decode audio data
+        try:
+            audio_data = base64.b64decode(audio_data_b64)
+        except Exception as e:
+            raise ValueError(f"Invalid base64 audio data: {str(e)}")
+        
+        # Extract metadata
+        metadata = event.get('metadata', {})
+        metadata.update({
+            'invocation_type': 'stream',
+            'request_id': context.aws_request_id,
+            'function_name': context.function_name
+        })
+        
+        logger.info("Stream authentication data validated", extra={
+            "user_id": user_id,
+            "audio_size_bytes": len(audio_data),
+            "metadata_keys": list(metadata.keys())
+        })
+        
+        # Initialize orchestrator and process
+        orchestrator = AuthOrchestrator()
+        auth_result = await orchestrator.stream_process_authentication_audio(
+            user_id=user_id,
+            audio_data=audio_data,
+            metadata=metadata
+        )
+        
+        # Format response for direct invocation
+        response = {
+            "statusCode": 200,
+            "authentication_successful": auth_result.get("authentication_successful", False),
+            "confidence_score": auth_result.get("confidence_score", 0.0),
+            "authentication_result": auth_result.get("authentication_result", "failed"),
+            "user_id": user_id,
+            "processing_time_ms": auth_result.get("processing_time_ms", 0),
+            "dual_validation": auth_result.get("dual_validation", {}),
+            "request_id": context.aws_request_id,
+            "processed_at": auth_result.get("completed_at")
+        }
+        
+        logger.info("Stream voice authentication completed", extra={
+            "user_id": user_id,
+            "authentication_successful": response["authentication_successful"],
+            "confidence_score": response["confidence_score"],
+            "processing_time_ms": response["processing_time_ms"]
+        })
+        
+        return response
+        
+    except ValueError as e:
+        logger.error("Stream authentication validation error", extra={
+            "error": str(e),
+            "user_id": event.get('user_id'),
+            "request_id": context.aws_request_id
+        })
+        
+        return {
+            "statusCode": 400,
+            "authentication_successful": False,
+            "error_type": "validation_error",
+            "error_message": str(e),
+            "request_id": context.aws_request_id
+        }
+        
+    except Exception as e:
+        logger.error("Stream authentication processing error", extra={
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "user_id": event.get('user_id'),
+            "request_id": context.aws_request_id
+        })
+        
+        return {
+            "statusCode": 500,
+            "authentication_successful": False,
+            "error_type": "processing_error",
+            "error_message": str(e),
+            "request_id": context.aws_request_id
         }
