@@ -9,6 +9,7 @@ Services:
 - completion_checker: Registration completion detection and analysis
 - user_status_manager: User registration status management and progress tracking
 - notification_handler: Event notifications and user communication
+- voice_authentication_service: Voice authentication through embedding comparison
 
 All services are designed to be stateless and can be safely used in
 serverless Lambda environments.
@@ -46,6 +47,15 @@ from .notification_handler import (
     send_system_notification
 )
 
+from .voice_authentication_service import (
+    VoiceAuthenticationService,
+    VoiceAuthenticationConfig,
+    AuthenticationResult,
+    voice_authentication_service,
+    authenticate_voice_sample,
+    calculate_embedding_similarity
+)
+
 __all__ = [
     # Audio Quality Validator
     'AudioQualityValidator',
@@ -73,5 +83,13 @@ __all__ = [
     'NotificationPriority',
     'notification_handler',
     'send_registration_notification',
-    'send_system_notification'
+    'send_system_notification',
+    
+    # Voice Authentication Service
+    'VoiceAuthenticationService',
+    'VoiceAuthenticationConfig',
+    'AuthenticationResult',
+    'voice_authentication_service',
+    'authenticate_voice_sample',
+    'calculate_embedding_similarity'
 ]
