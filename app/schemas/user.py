@@ -92,3 +92,83 @@ class UserVoiceStatus(BaseModel):
             UUID: str,
             datetime: lambda v: v.isoformat()
         }
+
+
+class VoiceAuthenticationRequest(BaseModel):
+    """
+    Request schema for voice authentication.
+    User uploads audio directly to FastAPI for immediate processing.
+    """
+    user_id: UUID = Field(..., description="User identifier for authentication")
+    audio_data: str = Field(..., description="Base64-encoded audio data (WAV format recommended)")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional audio metadata")
+    
+    @field_validator('audio_data')
+    @classmethod
+    def validate_audio_data(cls, v):
+        """Validate base64 audio data."""
+        if not v or not v.strip():
+            raise ValueError("Audio data cannot be empty")
+        
+        try:
+            # Basic base64 validation
+            import base64
+            decoded = base64.b64decode(v)
+            if len(decoded) < 1000:  # Minimum reasonable audio file size
+                raise ValueError("Audio data seems too small to be valid")
+            return v
+        except Exception:
+            raise ValueError("Invalid base64 audio data")
+
+    class Config:
+        """Pydantic configuration."""
+        json_encoders = {
+            UUID: str,
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class VoiceAuthenticationResponse(BaseModel):
+    """
+    Response schema for voice authentication.
+    Contains dual validation results (transcription + voice embedding).
+    """
+    user_id: UUID = Field(..., description="User identifier")
+    authentication_successful: bool = Field(..., description="Overall authentication result")
+    confidence_score: float = Field(..., description="Combined confidence score (0.0-1.0)")
+    processing_time_ms: int = Field(..., description="Total processing time in milliseconds")
+    request_id: str = Field(..., description="Unique request identifier for tracking")
+    
+    # Detailed validation results
+    transcription_validation: Dict[str, Any] = Field(..., description="Whisper transcription and password validation results")
+    voice_embedding_validation: Dict[str, Any] = Field(..., description="Voice biometric authentication results")
+    
+    # Authentication decision breakdown
+    validation_summary: Dict[str, Any] = Field(..., description="Summary of both validation methods")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(), description="Authentication timestamp")
+    
+    class Config:
+        """Pydantic configuration."""
+        json_encoders = {
+            UUID: str,
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class VoiceAuthenticationError(BaseModel):
+    """
+    Error response schema for voice authentication failures.
+    """
+    error_type: str = Field(..., description="Type of authentication error")
+    error_message: str = Field(..., description="Human-readable error message")
+    error_details: Optional[Dict[str, Any]] = Field(None, description="Additional error context")
+    user_id: Optional[UUID] = Field(None, description="User identifier if available")
+    request_id: Optional[str] = Field(None, description="Request identifier for tracking")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(), description="Error timestamp")
+    
+    class Config:
+        """Pydantic configuration."""
+        json_encoders = {
+            UUID: str,
+            datetime: lambda v: v.isoformat()
+        }

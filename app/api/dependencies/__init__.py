@@ -8,15 +8,18 @@ from functools import lru_cache
 from app.core.ports.user_repository import UserRepositoryPort
 from app.core.ports.password_service import PasswordServicePort
 from app.core.ports.audio_storage import AudioStorageServicePort
+from app.core.ports.lambda_invocation import LambdaInvocationPort
 
 # Domain use cases
 from app.core.usecases.register_user import RegisterUserUseCase
 from app.core.usecases.audio_management import AudioManagementUseCase
+from app.core.usecases.voice_authentication import VoiceAuthenticationUseCase
 
 # Infrastructure adapters
 from app.adapters.repositories.dynamodb_user_repository import DynamoDBUserRepository
 from app.core.services.password_service import PasswordService
 from app.adapters.services.audio_storage_service import AudioStorageAdapter
+from app.adapters.services.lambda_invocation_service import AWSLambdaInvocationService
 
 
 class DependencyContainer:
@@ -29,8 +32,10 @@ class DependencyContainer:
         self._user_repository = None
         self._password_service = None
         self._audio_storage_service = None
+        self._lambda_invocation_service = None
         self._register_use_case = None
         self._audio_management_use_case = None
+        self._voice_authentication_use_case = None
     
     # INFRASTRUCTURE LAYER (Outer layer)
     @property
@@ -54,6 +59,13 @@ class DependencyContainer:
             self._audio_storage_service = AudioStorageAdapter()
         return self._audio_storage_service
     
+    @property
+    def lambda_invocation_service(self) -> LambdaInvocationPort:
+        """Get Lambda invocation service instance (singleton)."""
+        if self._lambda_invocation_service is None:
+            self._lambda_invocation_service = AWSLambdaInvocationService()
+        return self._lambda_invocation_service
+    
     # APPLICATION LAYER (Use cases)
     @property
     def register_use_case(self) -> RegisterUserUseCase:
@@ -75,6 +87,16 @@ class DependencyContainer:
             )
         return self._audio_management_use_case
     
+    @property
+    def voice_authentication_use_case(self) -> VoiceAuthenticationUseCase:
+        """Get voice authentication use case (singleton)."""
+        if self._voice_authentication_use_case is None:
+            self._voice_authentication_use_case = VoiceAuthenticationUseCase(
+                lambda_invocation=self.lambda_invocation_service,
+                user_repository=self.user_repository
+            )
+        return self._voice_authentication_use_case
+    
     # TESTING SUPPORT
     def override_user_repository(self, repository: UserRepositoryPort) -> None:
         """Override user repository (for testing)."""
@@ -82,10 +104,19 @@ class DependencyContainer:
         # Reset dependent services
         self._register_use_case = None
         self._audio_management_use_case = None
+        self._voice_authentication_use_case = None
     
     def override_audio_storage(self, storage: AudioStorageServicePort) -> None:
         """Override audio storage service (for testing)."""
         self._audio_storage_service = storage
+        # Reset dependent services
+        self._audio_management_use_case = None
+    
+    def override_lambda_invocation(self, service: LambdaInvocationPort) -> None:
+        """Override Lambda invocation service (for testing)."""
+        self._lambda_invocation_service = service
+        # Reset dependent services
+        self._voice_authentication_use_case = None
     
     def override_password_service(self, service: PasswordServicePort) -> None:
         """Override password service (for testing)."""
@@ -128,6 +159,16 @@ def get_audio_management_use_case() -> AudioManagementUseCase:
     return get_dependency_container().audio_management_use_case
 
 
+def get_lambda_invocation_service() -> LambdaInvocationPort:
+    """FastAPI dependency for Lambda invocation service."""
+    return get_dependency_container().lambda_invocation_service
+
+
+def get_voice_authentication_use_case() -> VoiceAuthenticationUseCase:
+    """FastAPI dependency for voice authentication use case."""
+    return get_dependency_container().voice_authentication_use_case
+
+
 
 # CONFIGURATION VALIDATION
 def validate_dependencies() -> None:
@@ -145,6 +186,8 @@ def validate_dependencies() -> None:
         
         # Try to create all use cases
         register_uc = container.register_use_case
+        audio_mgmt_uc = container.audio_management_use_case
+        voice_auth_uc = container.voice_authentication_use_case
         
         
     except Exception as e:
