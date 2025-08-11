@@ -1,31 +1,22 @@
-# Lambda function dependencies for audio embedding processor
-# Core AWS SDK - Should match Lambda runtime
+# Audio Embedding Processor - Lambda Dependencies Only
+# NOTE: torch, numpy, scipy provided by layers
+# NOTE: resemblyzer, soundfile, webrtcvad provided by consolidated layer
+
+# Core AWS SDK
 boto3>=1.28.0,<2.0.0
 botocore>=1.31.0,<2.0.0
 
-# JSON and HTTP utilities
+# Audio processing (heavy dependency, not suitable for layer)
+librosa>=0.9.0,<1.0.0
+
+# HTTP utilities
 requests>=2.28.0,<3.0.0
 
-# Audio processing dependencies for ML integration
-numpy>=1.21.0,<2.0.0
-
-# Resemblyzer and audio processing
-resemblyzer>=0.1.1
-torch>=1.9.0,<2.0.0
-librosa>=0.9.0,<1.0.0
-scipy>=1.7.0,<2.0.0
-soundfile>=0.10.0
-webrtcvad>=2.0.10
-
-# Logging and utilities
+# Logging
 structlog>=22.1.0,<24.0.0
 
 # Date/time handling
 python-dateutil>=2.8.0,<3.0.0
 
-# URL parsing and encoding
+# URL parsing
 urllib3>=1.26.0,<2.0.0
-
-# Development and testing dependencies (excluded in deployment)
-# pytest>=7.0.0
-# moto>=4.0.0  # AWS mocking for tests

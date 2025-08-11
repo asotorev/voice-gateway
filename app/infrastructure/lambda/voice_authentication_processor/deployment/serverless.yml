@@ -1,9 +1,9 @@
-service: ${env:SERVERLESS_SERVICE_NAME, 'voice-gateway-auth-lambda'}
+service: voice-gateway-auth-lambda
 
 frameworkVersion: "3"
 
 provider:
-  name: ${env:SERVERLESS_PROVIDER_NAME, 'aws'}
+  name: aws
   runtime: ${env:LAMBDA_RUNTIME, 'python3.9'}
   region: ${env:AWS_REGION, 'us-east-1'}
   stage: ${env:STAGE, 'dev'}
@@ -12,8 +12,8 @@ provider:
 
   environment:
     STAGE: ${self:provider.stage}
-    AWS_REGION: ${self:provider.region}
-    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+    REGION: ${self:provider.region}
+    S3_BUCKET_NAME: voice-gateway-audio-${self:provider.stage}
     S3_AUTH_PREFIX: ${env:S3_AUTH_PREFIX, 'voice-auth/'}
     USERS_TABLE_NAME: ${env:USERS_TABLE_NAME}
     LOG_LEVEL: ${env:LAMBDA_LOG_LEVEL, 'INFO'}
@@ -27,7 +27,7 @@ provider:
     VOICE_AUTH_HIGH_CONFIDENCE: ${env:VOICE_AUTH_HIGH_CONFIDENCE, '0.85'}
 
     # OpenAI Transcription Configuration
-    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY, 'placeholder-key'}
     TRANSCRIPTION_MODEL: ${env:TRANSCRIPTION_MODEL, 'whisper-1'}
     TRANSCRIPTION_LANGUAGE: ${env:TRANSCRIPTION_LANGUAGE, 'es'}
     TRANSCRIPTION_CONFIDENCE_THRESHOLD: ${env:TRANSCRIPTION_CONFIDENCE_THRESHOLD, '0.7'}
@@ -47,7 +47,7 @@ provider:
             - s3:GetObject
             - s3:PutObject
           Resource:
-            - arn:aws:s3:::${env:S3_BUCKET_NAME}/*
+            - arn:aws:s3:::voice-gateway-audio-${self:provider.stage}/*
 
         # DynamoDB permissions for user data access
         - Effect: Allow
@@ -68,49 +68,38 @@ provider:
 
 functions:
   voiceAuthenticationProcessor:
-    handler: ${env:LAMBDA_FUNCTION_NAME, 'voice_authentication_processor'}.handler.lambda_handler
+    handler: handler.lambda_handler
     description: "Process voice authentication requests with dual validation"
-    reservedConcurrency: ${env:LAMBDA_CONCURRENT_EXECUTIONS, '5'}
+    # reservedConcurrency: ${env:LAMBDA_CONCURRENT_EXECUTIONS, '5'}
 
     events:
       # S3 trigger for voice authentication requests
       - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
+          bucket: voice-gateway-audio-${self:provider.stage}
+          event: s3:ObjectCreated:*
+          existing: true
           rules:
-            - prefix: ${env:S3_AUTH_PREFIX, 'voice-auth/'}
-            - suffix: .wav
-      - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
-          rules:
-            - prefix: ${env:S3_AUTH_PREFIX, 'voice-auth/'}
-            - suffix: .mp3
-      - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
-          rules:
-            - prefix: ${env:S3_AUTH_PREFIX, 'voice-auth/'}
-            - suffix: .m4a
+            - prefix: voice-auth-${self:provider.stage}/
 
     layers:
-      # Shared layer with core authentication logic
-      - ${cf:voice-gateway-shared-${self:provider.stage}.SharedLayerArn}
-
-      # Whisper ML layer (for transcription)
-      # - ${cf:voice-gateway-whisper-${self:provider.stage}.WhisperLayerArn}
-      #
-      # To create Whisper layer:
-      # 1. Create separate layer with openai-whisper, torch
-      # 2. Deploy layer stack first: cd layers && serverless deploy
-      # 3. Uncomment layer reference above
-      #
-      # For now, dependencies are packaged with function
+      # Custom PyTorch layer (optimized)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-pytorch-prod:1
+      # AWS SciPy layer (numpy, scipy) - official AWS layer
+      - arn:aws:lambda:us-east-1:668099181075:layer:AWSLambda-Python39-SciPy1x:115
+      # Consolidated Voice Gateway layer (resemblyzer, audio-utils, shared-code)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-consolidated-prod:1
 
   # Health check function for monitoring
   voiceAuthHealthCheck:
-    handler: ${env:LAMBDA_FUNCTION_NAME, 'voice_authentication_processor'}.presentation.lambda_handler.health_check_handler
+    handler: presentation.lambda_handler.health_check_handler
     description: "Health check endpoint for voice authentication processor"
+    layers:
+      # Custom PyTorch layer (optimized)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-pytorch-prod:1
+      # AWS SciPy layer (numpy, scipy) - official AWS layer
+      - arn:aws:lambda:us-east-1:668099181075:layer:AWSLambda-Python39-SciPy1x:115
+      # Consolidated Voice Gateway layer (resemblyzer, audio-utils, shared-code)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-consolidated-prod:1
     events:
       - httpApi:
           path: /health
@@ -129,11 +118,14 @@ custom:
 
 package:
   patterns:
+    - "../*.py"
+    - "../**/*.py"
+    - "!../tests/**"
+    - "!../**/__pycache__/**"
+    - "!../deployment/**"
     - "!node_modules/**"
     - "!.git/**"
     - "!.pytest_cache/**"
-    - "!tests/**"
-    - "!**/__pycache__/**"
     - "!.env"
     - "!.DS_Store"
     - "!*.pyc"

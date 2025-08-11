@@ -1,0 +1,47 @@
+service: voice-gateway-shared-layer
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: ${env:REGION, 'us-east-1'}
+  stage: ${env:STAGE, 'dev'}
+
+layers:
+  SharedLayer:
+    path: python
+    name: voice-gateway-shared-${self:provider.stage}
+    description: "Shared code and light dependencies for Voice Gateway"
+    compatibleRuntimes:
+      - python3.9
+    compatibleArchitectures:
+      - x86_64
+    retain: false
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+
+package:
+  patterns:
+    - "!.git/**"
+    - "!tests/**"
+    - "!**/__pycache__/**"
+    - "!.DS_Store"
+
+resources:
+  Description: "Voice Gateway Shared Layers for code and ML dependencies"
+
+  Outputs:
+    SharedLayerArn:
+      Description: "Shared Layer ARN"
+      Value:
+        Ref: SharedLayerLambdaLayer
+      Export:
+        Name: ${self:service}-${self:provider.stage}-SharedLayerArn

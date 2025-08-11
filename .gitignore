@@ -50,6 +50,50 @@ docker/
 
 # Node.js
 node_modules/
+
+# Serverless deployment artifacts
+.serverless/
+*.zip
+
+# Environment files (keep only .env.example)
+.env
+.env.local
+.env.prod
+.env.deploy
+.env.*.backup
+
+# Lambda package artifacts
+app/infrastructure/lambda/**/deployment/.serverless/
+app/infrastructure/lambda/**/deployment/package-lock.json
+
+# ML Layer build artifacts
+app/infrastructure/lambda/shared_layer/ml_layer_build/
+app/infrastructure/lambda/shared_layer/ml_layer_docker/layer_output/
+app/infrastructure/lambda/shared_layer/ml_layer_docker/additional_layer_output/
+app/infrastructure/lambda/shared_layer/ml_layer_docker/light_layer_output/
+app/infrastructure/lambda/shared_layer/ml_layer_docker/pytorch_layer/
+app/infrastructure/lambda/shared_layer/ml_layer_docker/*.zip
+app/infrastructure/lambda/shared_layer/shared_layer_fixed.zip
+app/infrastructure/lambda/shared_layer/test_layer.zip
+
+# Layer build directories (can contain thousands of files)
+app/infrastructure/lambda/shared_layer/*_layer_build/
+app/infrastructure/lambda/shared_layer/*_layer_output/
+app/infrastructure/lambda/shared_layer/consolidated_layer_build/
+
+# Layer ZIP files
+app/infrastructure/lambda/shared_layer/*.zip
+
+# Temporary ML files
+app/infrastructure/lambda/shared_layer/ml_requirements.txt
+
+# Node.js in deployment folders
+app/infrastructure/lambda/**/deployment/node_modules/
+app/infrastructure/lambda/shared_layer/node_modules/
+
+# AWS deployment logs
+cloudformation-template-*.json
+serverless-state.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

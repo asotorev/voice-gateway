@@ -1,9 +1,9 @@
-service: ${env:SERVERLESS_SERVICE_NAME, 'voice-gateway-lambda'}
+service: voice-gateway-lambda
 
 frameworkVersion: "3"
 
 provider:
-  name: ${env:SERVERLESS_PROVIDER_NAME, 'aws'}
+  name: aws
   runtime: ${env:LAMBDA_RUNTIME, 'python3.9'}
   region: ${env:AWS_REGION, 'us-east-1'}
   stage: ${env:STAGE, 'dev'}
@@ -12,8 +12,8 @@ provider:
 
   environment:
     STAGE: ${self:provider.stage}
-    AWS_REGION: ${self:provider.region}
-    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+    REGION: ${self:provider.region}
+    S3_BUCKET_NAME: voice-gateway-audio-${self:provider.stage}
     USERS_TABLE_NAME: ${env:USERS_TABLE_NAME}
     LOG_LEVEL: ${env:LAMBDA_LOG_LEVEL, 'INFO'}
     MAX_AUDIO_FILE_SIZE_MB: ${env:MAX_AUDIO_FILE_SIZE_MB, '10'}
@@ -22,6 +22,9 @@ provider:
     LAMBDA_MAX_RETRIES: ${env:LAMBDA_MAX_RETRIES, '3'}
     VOICE_EMBEDDING_DIMENSIONS: ${env:VOICE_EMBEDDING_DIMENSIONS, '256'}
     EMBEDDING_PROCESSOR_TYPE: ${env:EMBEDDING_PROCESSOR_TYPE, 'mock'}
+    # Webhook notifications
+    ENABLE_NOTIFICATIONS: ${env:ENABLE_NOTIFICATIONS, 'true'}
+    NOTIFICATION_WEBHOOK_URL: ${env:NOTIFICATION_WEBHOOK_URL, ''}
 
   iam:
     role:
@@ -32,7 +35,7 @@ provider:
             - s3:GetObject
             - s3:PutObject
           Resource:
-            - arn:aws:s3:::${env:S3_BUCKET_NAME}/*
+            - arn:aws:s3:::voice-gateway-audio-${self:provider.stage}/*
 
         # DynamoDB permissions for user updates
         - Effect: Allow
@@ -53,41 +56,25 @@ provider:
 
 functions:
   audioEmbeddingProcessor:
-    handler: ${env:LAMBDA_FUNCTION_NAME, 'audio_embedding_processor'}.handler.lambda_handler
+    handler: handler.lambda_handler
     description: "Process audio files to generate voice embeddings"
-    reservedConcurrency: ${env:LAMBDA_CONCURRENT_EXECUTIONS, '10'}
+    # reservedConcurrency: ${env:LAMBDA_CONCURRENT_EXECUTIONS, '10'}
 
     events:
-      # S3 trigger for new audio uploads
+      # S3 trigger for new audio uploads (bucket will be created automatically)
       - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
+          bucket: voice-gateway-audio-${self:provider.stage}
+          event: s3:ObjectCreated:*
           rules:
-            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
-            - suffix: .wav
-      - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
-          rules:
-            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
-            - suffix: .mp3
-      - s3:
-          bucket: ${env:S3_BUCKET_NAME}
-          event: ${env:S3_TRIGGER_EVENT, 's3:ObjectCreated:*'}
-          rules:
-            - prefix: ${env:S3_TRIGGER_PREFIX, 'audio-uploads/'}
-            - suffix: .m4a
+            - prefix: audio-uploads-${self:provider.stage}/
 
     layers:
-      # ML dependencies layer (for production optimization)
-      # - ${cf:voice-gateway-layers-${self:provider.stage}.AudioMLLayerArn}
-      #
-      # To create ML layer:
-      # 1. Create separate layer with torch, librosa, resemblyzer
-      # 2. Deploy layer stack first: cd layers && serverless deploy
-      # 3. Uncomment layer reference above
-      #
-      # For now, dependencies are packaged with function
+      # Custom PyTorch layer (optimized)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-pytorch-prod:1
+      # AWS SciPy layer (numpy, scipy) - official AWS layer
+      - arn:aws:lambda:us-east-1:668099181075:layer:AWSLambda-Python39-SciPy1x:115
+      # Consolidated Voice Gateway layer (resemblyzer, audio-utils, shared-code)
+      - arn:aws:lambda:us-east-1:275794523564:layer:voice-gateway-consolidated-prod:1
 
 plugins:
   - serverless-python-requirements
@@ -100,11 +87,14 @@ custom:
 
 package:
   patterns:
+    - "../*.py"
+    - "../**/*.py"
+    - "!../tests/**"
+    - "!../**/__pycache__/**"
+    - "!../deployment/**"
     - "!node_modules/**"
     - "!.git/**"
     - "!.pytest_cache/**"
-    - "!tests/**"
-    - "!**/__pycache__/**"
     - "!.env"
     - "!.DS_Store"
 

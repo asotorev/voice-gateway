@@ -10,8 +10,11 @@ import json
 import logging
 from typing import Dict, Any, List
 
-# Add shared layer to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared_layer', 'python'))
+# Add shared layer to Python path for Lambda execution
+if '/opt/python' not in sys.path:
+    sys.path.append('/opt/python')
+if '/var/task' not in sys.path:
+    sys.path.append('/var/task')
 
 # Setup logging
 from shared.infrastructure.aws.aws_config import configure_lambda_logging

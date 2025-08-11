@@ -1,0 +1,16 @@
+{
+  "name": "voice-gateway-shared-layer",
+  "version": "1.0.0",
+  "description": "Shared layer deployment for Voice Gateway",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove"
+  },
+  "devDependencies": {
+    "serverless": "^3.38.0",
+    "serverless-python-requirements": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

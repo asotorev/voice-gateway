@@ -1,0 +1,23 @@
+{
+  "name": "voice-gateway-voice-auth-processor",
+  "version": "1.0.0",
+  "description": "Voice authentication processor Lambda function deployment",
+  "main": "handler.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "logs": "serverless logs -f voiceAuthenticationProcessor",
+    "offline": "serverless offline"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "serverless": "^3.38.0",
+    "serverless-python-requirements": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Voice Gateway Team",
+  "license": "MIT"
+}
+

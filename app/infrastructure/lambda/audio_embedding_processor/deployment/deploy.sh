@@ -106,10 +106,10 @@ fi
 load_environment() {
     log_info "Loading environment configuration..."
     
-    # Look for .env files in project root
+    # Look for .env files in project root (stage-specific first, then defaults)
     local env_files=(
-        "$PROJECT_ROOT/.env.local"
         "$PROJECT_ROOT/.env.$STAGE"
+        "$PROJECT_ROOT/.env.local"
         "$PROJECT_ROOT/.env"
     )
     
