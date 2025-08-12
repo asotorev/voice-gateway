@@ -1,0 +1,69 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DynamoDBAccess",
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem", 
+                "dynamodb:UpdateItem",
+                "dynamodb:Query",
+                "dynamodb:Scan"
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:*:*:table/voice-gateway-users-*",
+                "arn:aws:dynamodb:*:*:table/voice-gateway-users-*/index/*"
+            ]
+        },
+        {
+            "Sid": "S3AudioAccess", 
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:GetObjectPresignedUrl",
+                "s3:PutObjectPresignedUrl"
+            ],
+            "Resource": [
+                "arn:aws:s3:::voice-gateway-audio-*/*"
+            ]
+        },
+        {
+            "Sid": "S3BucketAccess",
+            "Effect": "Allow", 
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": [
+                "arn:aws:s3:::voice-gateway-audio-*"
+            ]
+        },
+        {
+            "Sid": "LambdaInvocation",
+            "Effect": "Allow",
+            "Action": [
+                "lambda:InvokeFunction"
+            ],
+            "Resource": [
+                "arn:aws:lambda:*:*:function:voice-gateway-lambda-*-voiceAuthenticationProcessor",
+                "arn:aws:lambda:*:*:function:voice-gateway-lambda-*-audioEmbeddingProcessor"
+            ]
+        },
+        {
+            "Sid": "CloudWatchLogs",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream", 
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:*:*:log-group:/aws/apprunner/voice-gateway-api-*",
+                "arn:aws:logs:*:*:log-group:/aws/apprunner/voice-gateway-api-*:*"
+            ]
+        }
+    ]
+}

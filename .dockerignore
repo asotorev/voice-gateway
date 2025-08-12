@@ -1,0 +1,25 @@
+# VCS
+.git
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Environments
+.env
+.env.*
+
+# Tests and local tooling
+/tests
+pytest.ini
+
+# Local infra and deployment assets not needed in API container
+/infrastructure
+/app/infrastructure/lambda
+
+# Local docker assets
+/docker
+
+# Misc
+.DS_Store
